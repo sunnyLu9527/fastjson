@@ -36,6 +36,9 @@ public class BooleanCodec implements ObjectSerializer, ObjectDeserializer {
     public void write(JSONSerializer serializer, Object object, Object fieldName, Type fieldType, int features) throws IOException {
         SerializeWriter out = serializer.out;
 
+        /** 当前object是boolean值, 如果为null,
+         *  并且序列化开启WriteNullBooleanAsFalse特性, 输出false
+         */
         Boolean value = (Boolean) object;
         if (value == null) {
             out.writeNull(SerializerFeature.WriteNullBooleanAsFalse);
@@ -56,16 +59,20 @@ public class BooleanCodec implements ObjectSerializer, ObjectDeserializer {
         Boolean boolObj;
 
         try {
+            /** 遇到true类型的token，预读下一个token */
             if (lexer.token() == JSONToken.TRUE) {
                 lexer.nextToken(JSONToken.COMMA);
                 boolObj = Boolean.TRUE;
+                /** 遇到false类型的token，预读下一个token */
             } else if (lexer.token() == JSONToken.FALSE) {
                 lexer.nextToken(JSONToken.COMMA);
                 boolObj = Boolean.FALSE;
             } else if (lexer.token() == JSONToken.LITERAL_INT) {
+                /** 遇到整数类型的token，预读下一个token */
                 int intValue = lexer.intValue();
                 lexer.nextToken(JSONToken.COMMA);
 
+                /** 1代表true，其他情况false */
                 if (intValue == 1) {
                     boolObj = Boolean.TRUE;
                 } else {
@@ -78,12 +85,14 @@ public class BooleanCodec implements ObjectSerializer, ObjectDeserializer {
                     return null;
                 }
 
+                /** 处理其他情况，比如Y,T代表true */
                 boolObj = TypeUtils.castToBoolean(value);
             }
         } catch (Exception ex) {
             throw new JSONException("parseBoolean error, field : " + fieldName, ex);
         }
 
+        /** 如果是原子类型 */
         if (clazz == AtomicBoolean.class) {
             return (T) new AtomicBoolean(boolObj.booleanValue());
         }

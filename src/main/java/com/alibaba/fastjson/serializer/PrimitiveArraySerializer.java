@@ -29,10 +29,14 @@ public class PrimitiveArraySerializer implements ObjectSerializer {
         SerializeWriter out = serializer.out;
         
         if (object == null) {
+            /** 当前object是数组值, 如果为null,
+             *  并且序列化开启WriteNullListAsEmpty特性, 输出空串""
+             */
             out.writeNull(SerializerFeature.WriteNullListAsEmpty);
             return;
         }
-        
+
+        /** 循环写int数组 */
         if (object instanceof int[]) {
             int[] array = (int[]) object;
             out.write('[');
@@ -45,7 +49,8 @@ public class PrimitiveArraySerializer implements ObjectSerializer {
             out.write(']');
             return;
         }
-        
+
+        /** 循环写short数组 */
         if (object instanceof short[]) {
             short[] array = (short[]) object;
             out.write('[');
@@ -58,7 +63,8 @@ public class PrimitiveArraySerializer implements ObjectSerializer {
             out.write(']');
             return;
         }
-        
+
+        /** 循环写long数组 */
         if (object instanceof long[]) {
             long[] array = (long[]) object;
 
@@ -72,7 +78,8 @@ public class PrimitiveArraySerializer implements ObjectSerializer {
             out.write(']');
             return;
         }
-        
+
+        /** 循环写boolean数组 */
         if (object instanceof boolean[]) {
             boolean[] array = (boolean[]) object;
             out.write('[');
@@ -85,7 +92,8 @@ public class PrimitiveArraySerializer implements ObjectSerializer {
             out.write(']');
             return;
         }
-        
+
+        /** 循环写float数组 */
         if (object instanceof float[]) {
             float[] array = (float[]) object;
             out.write('[');
@@ -104,7 +112,8 @@ public class PrimitiveArraySerializer implements ObjectSerializer {
             out.write(']');
             return;
         }
-        
+
+        /** 循环写double数组 */
         if (object instanceof double[]) {
             double[] array = (double[]) object;
             out.write('[');
@@ -123,13 +132,13 @@ public class PrimitiveArraySerializer implements ObjectSerializer {
             out.write(']');
             return;
         }
-        
+        /** 写字节数组 */
         if (object instanceof byte[]) {
             byte[] array = (byte[]) object;
             out.writeByteArray(array);
             return;
         }
-        
+        /** char数组当做字符串 */
         char[] chars = (char[]) object;
         out.writeString(chars);
     }

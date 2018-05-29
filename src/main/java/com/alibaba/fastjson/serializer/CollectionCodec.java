@@ -40,6 +40,9 @@ public class CollectionCodec implements ObjectSerializer, ObjectDeserializer {
     public void write(JSONSerializer serializer, Object object, Object fieldName, Type fieldType, int features) throws IOException {
         SerializeWriter out = serializer.out;
 
+        /** 当前object是集合对象, 如果为null,
+         *  并且序列化开启WriteNullListAsEmpty特性, 输出空串[]
+         */
         if (object == null) {
             out.writeNull(SerializerFeature.WriteNullListAsEmpty);
             return;
@@ -49,6 +52,7 @@ public class CollectionCodec implements ObjectSerializer, ObjectDeserializer {
         if (out.isEnabled(SerializerFeature.WriteClassName)
                 || SerializerFeature.isEnabled(features, SerializerFeature.WriteClassName))
         {
+            /** 获取字段泛型类型 */
             elementType = TypeUtils.getCollectionItemType(fieldType);
         }
 
@@ -81,11 +85,13 @@ public class CollectionCodec implements ObjectSerializer, ObjectDeserializer {
 
                 Class<?> clazz = item.getClass();
 
+                /** 获取整形类型值，输出 */
                 if (clazz == Integer.class) {
                     out.writeInt(((Integer) item).intValue());
                     continue;
                 }
 
+                /** 获取整形长类型值，输出并添加L标识(如果开启WriteClassName特性) */
                 if (clazz == Long.class) {
                     out.writeLong(((Long) item).longValue());
 
@@ -95,6 +101,7 @@ public class CollectionCodec implements ObjectSerializer, ObjectDeserializer {
                     continue;
                 }
 
+                /** 根据集合类型查找序列化实例处理，JavaBeanSerializer后面单独分析 */
                 ObjectSerializer itemSerializer = serializer.getObjectWriter(clazz);
                 if (SerializerFeature.isEnabled(features, SerializerFeature.WriteClassName)
                         && itemSerializer instanceof JavaBeanSerializer) {

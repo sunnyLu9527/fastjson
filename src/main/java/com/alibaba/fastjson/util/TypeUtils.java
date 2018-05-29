@@ -1285,6 +1285,7 @@ public class TypeUtils{
             }
 
             features = SerializerFeature.of(jsonType.serialzeFeatures());
+            /** 查找类型父类是否包含JSONType注解 */
             for(Class<?> supperClass = beanType.getSuperclass()
                 ; supperClass != null && supperClass != Object.class
                     ; supperClass = supperClass.getSuperclass()){
@@ -1298,6 +1299,7 @@ public class TypeUtils{
                 }
             }
 
+            /** 查找类型实现的接口是否包含JSONType注解 */
             for(Class<?> interfaceClass : beanType.getInterfaces()){
                 JSONType superJsonType = TypeUtils.getAnnotation(interfaceClass,JSONType.class);
                 if(superJsonType != null){
@@ -1325,6 +1327,9 @@ public class TypeUtils{
         FieldInfo[] sortedFields;
         List<FieldInfo> sortedFieldList;
         if(orders != null && orders.length != 0){
+            /** computeGettersWithFieldBase基于字段解析,
+             *  computeGetters基于方法解析+字段解析
+             */
             sortedFieldList = fieldBased
                     ? computeGettersWithFieldBase(beanType, aliasMap, true, propertyNamingStrategy) //
                     : computeGetters(beanType, jsonType, aliasMap, fieldCacheMap, true, propertyNamingStrategy);
@@ -1337,6 +1342,7 @@ public class TypeUtils{
         if(Arrays.equals(sortedFields, fields)){
             sortedFields = fields;
         }
+        /** 封装对象的字段信息和方法信息 */
         return new SerializeBeanInfo(beanType, jsonType, typeName, typeKey, features, fields, sortedFields);
     }
 
@@ -1348,8 +1354,10 @@ public class TypeUtils{
         Map<String,FieldInfo> fieldInfoMap = new LinkedHashMap<String,FieldInfo>();
         for(Class<?> currentClass = clazz; currentClass != null; currentClass = currentClass.getSuperclass()){
             Field[] fields = currentClass.getDeclaredFields();
+            /** 遍历clazz所有字段，把字段信息封装成bean存储到fieldInfoMap中*/
             computeFields(currentClass, aliasMap, propertyNamingStrategy, fieldInfoMap, fields);
         }
+        /** 主要处理字段有序的逻辑 */
         return getFieldInfos(clazz, sorted, fieldInfoMap);
     }
 
@@ -1655,6 +1663,7 @@ public class TypeUtils{
     private static List<FieldInfo> getFieldInfos(Class<?> clazz, boolean sorted, Map<String,FieldInfo> fieldInfoMap){
         List<FieldInfo> fieldInfoList = new ArrayList<FieldInfo>();
         String[] orders = null;
+        /** 查找clazz上面的JSONType注解 */
         JSONType annotation = TypeUtils.getAnnotation(clazz,JSONType.class);
         if(annotation != null){
             orders = annotation.orders();
@@ -1665,6 +1674,7 @@ public class TypeUtils{
                 map.put(field.name, field);
             }
             int i = 0;
+            /** 先把有序字段从map移除，并添加到有序列表fieldInfoList中 */
             for(String item : orders){
                 FieldInfo field = map.get(item);
                 if(field != null){
@@ -1672,10 +1682,12 @@ public class TypeUtils{
                     map.remove(item);
                 }
             }
+            /** 将map剩余元素追加到有序列表末尾 */
             for(FieldInfo field : map.values()){
                 fieldInfoList.add(field);
             }
         } else{
+            /** 如果注解没有要求顺序，全部添加map元素 */
             for(FieldInfo fieldInfo : fieldInfoMap.values()){
                 fieldInfoList.add(fieldInfo);
             }
@@ -1693,21 +1705,26 @@ public class TypeUtils{
             Map<String,FieldInfo> fieldInfoMap, //
             Field[] fields){
         for(Field field : fields){
+            /** 忽略静态字段类型 */
             if(Modifier.isStatic(field.getModifiers())){
                 continue;
             }
+            /** 查找当前字段是否包含JSONField注解 */
             JSONField fieldAnnotation = field.getAnnotation(JSONField.class);
             int ordinal = 0, serialzeFeatures = 0, parserFeatures = 0;
             String propertyName = field.getName();
             String label = null;
             if(fieldAnnotation != null){
+                /** 忽略不序列化的字段 */
                 if(!fieldAnnotation.serialize()){
                     continue;
                 }
+                /** 获取字段序列化顺序 */
                 ordinal = fieldAnnotation.ordinal();
                 serialzeFeatures = SerializerFeature.of(fieldAnnotation.serialzeFeatures());
                 parserFeatures = Feature.of(fieldAnnotation.parseFeatures());
                 if(fieldAnnotation.name().length() != 0){
+                    /** 属性名字采用JSONField注解上面的name */
                     propertyName = fieldAnnotation.name();
                 }
                 if(fieldAnnotation.label().length() != 0){
@@ -1715,14 +1732,17 @@ public class TypeUtils{
                 }
             }
             if(aliasMap != null){
+                /** 查找是否包含属性别名的字段 */
                 propertyName = aliasMap.get(propertyName);
                 if(propertyName == null){
                     continue;
                 }
             }
             if(propertyNamingStrategy != null){
+                /** 属性字段命名规则转换 */
                 propertyName = propertyNamingStrategy.translate(propertyName);
             }
+            /** 封装解析类型的字段和类型 */
             if(!fieldInfoMap.containsKey(propertyName)){
                 FieldInfo fieldInfo = new FieldInfo(propertyName, null, field, clazz, null, ordinal, serialzeFeatures, parserFeatures,
                         null, fieldAnnotation, label);
@@ -2337,6 +2357,13 @@ public class TypeUtils{
         return ignores != null && Arrays.binarySearch(ignores, methodName) >= 0;
     }
 
+    /**
+     * 获取类上标注的指定注解
+     * @param clazz
+     * @param annotationClass
+     * @param <A>
+     * @return
+     */
     public static <A extends Annotation> A getAnnotation(Class<?> clazz, Class<A> annotationClass){
         A a = clazz.getAnnotation(annotationClass);
         if (a != null){

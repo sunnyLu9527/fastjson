@@ -93,8 +93,10 @@ public class SerializeConfig {
     }
 
     public final ObjectSerializer createJavaBeanSerializer(Class<?> clazz) {
+        /** 封装序列化clazz Bean，包含字段类型等等 */
 	    SerializeBeanInfo beanInfo = TypeUtils.buildBeanInfo(clazz, null, propertyNamingStrategy, fieldBased);
 	    if (beanInfo.fields.length == 0 && Iterable.class.isAssignableFrom(clazz)) {
+            /** 如果clazz是迭代器类型，使用MiscCodec序列化，会被序列化成数组 [,,,] */
 	        return MiscCodec.instance;
 	    }
 
@@ -102,14 +104,15 @@ public class SerializeConfig {
 	}
 	
 	public ObjectSerializer createJavaBeanSerializer(SerializeBeanInfo beanInfo) {
-	    JSONType jsonType = beanInfo.jsonType;
+        JSONType jsonType = beanInfo.jsonType;
 
         boolean asm = this.asm && !fieldBased;
-	    
-	    if (jsonType != null) {
-	        Class<?> serializerClass = jsonType.serializer();
-	        if (serializerClass != Void.class) {
-	            try {
+
+        if (jsonType != null) {
+            Class<?> serializerClass = jsonType.serializer();
+            if (serializerClass != Void.class) {
+                try {
+                    /** 实例化注解指定的类型 */
                     Object seralizer = serializerClass.newInstance();
                     if (seralizer instanceof ObjectSerializer) {
                         return (ObjectSerializer) seralizer;
@@ -117,119 +120,54 @@ public class SerializeConfig {
                 } catch (Throwable e) {
                     // skip
                 }
-	        }
-	        
-	        if (jsonType.asm() == false) {
-	            asm = false;
-	        }
+            }
 
+            /** 注解显示指定不使用asm */
+            if (jsonType.asm() == false) {
+                asm = false;
+            }
+
+            /** 注解显示开启WriteNonStringValueAsString、WriteEnumUsingToString
+             * 和NotWriteDefaultValue不使用asm */
             for (SerializerFeature feature : jsonType.serialzeFeatures()) {
                 if (SerializerFeature.WriteNonStringValueAsString == feature //
                         || SerializerFeature.WriteEnumUsingToString == feature //
-                        || SerializerFeature.NotWriteDefaultValue == feature
-                        || SerializerFeature.BrowserCompatible == feature) {
+                        || SerializerFeature.NotWriteDefaultValue == feature) {
                     asm = false;
                     break;
                 }
             }
         }
 
-	    Class<?> clazz = beanInfo.beanType;
-		if (!Modifier.isPublic(beanInfo.beanType.getModifiers())) {
-			return new JavaBeanSerializer(beanInfo);
-		}
-
-
-
-		if (asm && asmFactory.classLoader.isExternalClass(clazz)
-				|| clazz == Serializable.class || clazz == Object.class) {
-			asm = false;
-		}
-
-		if (asm && !ASMUtils.checkName(clazz.getSimpleName())) {
-		    asm = false;
-		}
-
-		if (asm && beanInfo.beanType.isInterface()) {
-		    asm = false;
+        Class<?> clazz = beanInfo.beanType;
+        /** 非public类型，直接使用JavaBeanSerializer序列化 */
+        if (!Modifier.isPublic(beanInfo.beanType.getModifiers())) {
+            return new JavaBeanSerializer(beanInfo);
         }
-		
-		if (asm) {
-    		for(FieldInfo fieldInfo : beanInfo.fields){
-                Field field = fieldInfo.field;
-                if (field != null && !field.getType().equals(fieldInfo.fieldClass)) {
-                    asm = false;
-                    break;
-                }
 
-                Method method = fieldInfo.method;
-                if (method != null && !method.getReturnType().equals(fieldInfo.fieldClass)) {
-                    asm = false;
-                    break;
-                }
+        // ... 省略asm判断检查
 
-    			JSONField annotation = fieldInfo.getAnnotation();
-    			
-    			if (annotation == null) {
-    			    continue;
-    			}
-
-    			String format = annotation.format();
-    			if (format.length() != 0) {
-    			    if (fieldInfo.fieldClass == String.class && "trim".equals(format)) {
-
-                    } else {
-                        asm = false;
-                        break;
-                    }
-                }
-
-                if ((!ASMUtils.checkName(annotation.name())) //
-                        || annotation.jsonDirect()
-                        || annotation.serializeUsing() != Void.class
-                        || annotation.unwrapped()
-                        ) {
-    				asm = false;
-    				break;
-    			}
-
-                for (SerializerFeature feature : annotation.serialzeFeatures()) {
-                    if (SerializerFeature.WriteNonStringValueAsString == feature //
-                            || SerializerFeature.WriteEnumUsingToString == feature //
-                            || SerializerFeature.NotWriteDefaultValue == feature
-                            || SerializerFeature.BrowserCompatible == feature
-                            || SerializerFeature.WriteClassName == feature) {
-                        asm = false;
-                        break;
-                    }
-                }
-
-                if (TypeUtils.isAnnotationPresentOneToMany(method) || TypeUtils.isAnnotationPresentManyToMany(method)) {
-    			    asm = true;
-    			    break;
-                }
-    		}
-		}
-		
-		if (asm) {
-			try {
+        if (asm) {
+            try {
+                /** 使用asm字节码库序列化，后面单独列一个章节分析asm源码 */
                 ObjectSerializer asmSerializer = createASMSerializer(beanInfo);
                 if (asmSerializer != null) {
                     return asmSerializer;
                 }
             } catch (ClassNotFoundException ex) {
-			    // skip
-			} catch (ClassFormatError e) {
-			    // skip
-			} catch (ClassCastException e) {
-				// skip
-			} catch (Throwable e) {
-				throw new JSONException("create asm serializer error, class "
-						+ clazz, e);
-			}
-		}
+                // skip
+            } catch (ClassFormatError e) {
+                // skip
+            } catch (ClassCastException e) {
+                // skip
+            } catch (Throwable e) {
+                throw new JSONException("create asm serializer error, class "
+                        + clazz, e);
+            }
+        }
 
-		return new JavaBeanSerializer(beanInfo);
+        /** 默认使用JavaBeanSerializer 序列化类 */
+        return new JavaBeanSerializer(beanInfo);
 	}
 
 	public boolean isAsmEnable() {
@@ -401,11 +339,13 @@ public class SerializeConfig {
     }
 	
 	private ObjectSerializer getObjectWriter(Class<?> clazz, boolean create) {
+        /** 首先从内部已经注册查找特定class的序列化实例 */
         ObjectSerializer writer = serializers.get(clazz);
 
         if (writer == null) {
             try {
                 final ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+                /** 使用当前线程类加载器 查找 META-INF/services/AutowiredObjectSerializer.class实现类 */
                 for (Object o : ServiceLoader.load(AutowiredObjectSerializer.class, classLoader)) {
                     if (!(o instanceof AutowiredObjectSerializer)) {
                         continue;
@@ -413,6 +353,7 @@ public class SerializeConfig {
 
                     AutowiredObjectSerializer autowired = (AutowiredObjectSerializer) o;
                     for (Type forType : autowired.getAutowiredFor()) {
+                        /** 如果存在，注册到内部serializers缓存中 */
                         put(forType, autowired);
                     }
                 }
@@ -420,10 +361,12 @@ public class SerializeConfig {
                 // skip
             }
 
+            /** 尝试在已注册缓存找到特定class的序列化实例 */
             writer = serializers.get(clazz);
         }
 
         if (writer == null) {
+            /** 使用加载JSON类的加载器 查找 META-INF/services/AutowiredObjectSerializer.class实现类 */
             final ClassLoader classLoader = JSON.class.getClassLoader();
             if (classLoader != Thread.currentThread().getContextClassLoader()) {
                 try {
@@ -435,6 +378,7 @@ public class SerializeConfig {
 
                         AutowiredObjectSerializer autowired = (AutowiredObjectSerializer) o;
                         for (Type forType : autowired.getAutowiredFor()) {
+                            /** 如果存在，注册到内部serializers缓存中 */
                             put(forType, autowired);
                         }
                     }
@@ -442,71 +386,105 @@ public class SerializeConfig {
                     // skip
                 }
 
+                /** 尝试在已注册缓存找到特定class的序列化实例 */
                 writer = serializers.get(clazz);
             }
         }
-        
+
         if (writer == null) {
             String className = clazz.getName();
             Class<?> superClass;
 
             if (Map.class.isAssignableFrom(clazz)) {
+                /** 如果class实现类Map接口，使用MapSerializer序列化 */
                 put(clazz, writer = MapSerializer.instance);
             } else if (List.class.isAssignableFrom(clazz)) {
+                /** 如果class实现类List接口，使用ListSerializer序列化 */
                 put(clazz, writer = ListSerializer.instance);
             } else if (Collection.class.isAssignableFrom(clazz)) {
+                /** 如果class实现类Collection接口，使用CollectionCodec序列化 */
                 put(clazz, writer = CollectionCodec.instance);
             } else if (Date.class.isAssignableFrom(clazz)) {
+                /** 如果class继承Date，使用DateCodec序列化 */
                 put(clazz, writer = DateCodec.instance);
             } else if (JSONAware.class.isAssignableFrom(clazz)) {
+                /** 如果class实现类JSONAware接口，使用JSONAwareSerializer序列化 */
                 put(clazz, writer = JSONAwareSerializer.instance);
             } else if (JSONSerializable.class.isAssignableFrom(clazz)) {
+                /** 如果class实现类JSONSerializable接口，使用JSONSerializableSerializer序列化 */
                 put(clazz, writer = JSONSerializableSerializer.instance);
             } else if (JSONStreamAware.class.isAssignableFrom(clazz)) {
+                /** 如果class实现类JSONStreamAware接口，使用MiscCodecr序列化 */
                 put(clazz, writer = MiscCodec.instance);
             } else if (clazz.isEnum()) {
                 JSONType jsonType = TypeUtils.getAnnotation(clazz, JSONType.class);
                 if (jsonType != null && jsonType.serializeEnumAsJavaBean()) {
+                    /** 如果是枚举类型，并且启用特性 serializeEnumAsJavaBean
+                     *  使用JavaBeanSerializer序列化(假设没有启用asm)
+                     */
                     put(clazz, writer = createJavaBeanSerializer(clazz));
                 } else {
+                    /** 如果是枚举类型，没有启用特性 serializeEnumAsJavaBean
+                     *  使用EnumSerializer序列化
+                     */
                     put(clazz, writer = EnumSerializer.instance);
                 }
             } else if ((superClass = clazz.getSuperclass()) != null && superClass.isEnum()) {
                 JSONType jsonType = TypeUtils.getAnnotation(superClass, JSONType.class);
                 if (jsonType != null && jsonType.serializeEnumAsJavaBean()) {
+                    /** 如果父类是枚举类型，并且启用特性 serializeEnumAsJavaBean
+                     *  使用JavaBeanSerializer序列化(假设没有启用asm)
+                     */
                     put(clazz, writer = createJavaBeanSerializer(clazz));
                 } else {
+                    /** 如果父类是枚举类型，没有启用特性 serializeEnumAsJavaBean
+                     *  使用EnumSerializer序列化
+                     */
                     put(clazz, writer = EnumSerializer.instance);
                 }
             } else if (clazz.isArray()) {
                 Class<?> componentType = clazz.getComponentType();
+                /** 如果是数组类型，根据数组实际类型查找序列化实例 */
                 ObjectSerializer compObjectSerializer = getObjectWriter(componentType);
                 put(clazz, writer = new ArraySerializer(componentType, compObjectSerializer));
             } else if (Throwable.class.isAssignableFrom(clazz)) {
+                /** 注册通用JavaBeanSerializer序列化处理 Throwable */
                 SerializeBeanInfo beanInfo = TypeUtils.buildBeanInfo(clazz, null, propertyNamingStrategy);
                 beanInfo.features |= SerializerFeature.WriteClassName.mask;
                 put(clazz, writer = new JavaBeanSerializer(beanInfo));
             } else if (TimeZone.class.isAssignableFrom(clazz) || Map.Entry.class.isAssignableFrom(clazz)) {
+                /** 如果class实现Map.Entry接口或者继承类TimeZone，使用MiscCodecr序列化 */
                 put(clazz, writer = MiscCodec.instance);
             } else if (Appendable.class.isAssignableFrom(clazz)) {
+                /** 如果class实现Appendable接口，使用AppendableSerializer序列化 */
                 put(clazz, writer = AppendableSerializer.instance);
             } else if (Charset.class.isAssignableFrom(clazz)) {
+                /** 如果class继承Charset抽象类，使用ToStringSerializer序列化 */
                 put(clazz, writer = ToStringSerializer.instance);
             } else if (Enumeration.class.isAssignableFrom(clazz)) {
+                /** 如果class实现Enumeration接口，使用EnumerationSerializer序列化 */
                 put(clazz, writer = EnumerationSerializer.instance);
-            } else if (Calendar.class.isAssignableFrom(clazz) //
+            } else if (Calendar.class.isAssignableFrom(clazz)
                     || XMLGregorianCalendar.class.isAssignableFrom(clazz)) {
+                /** 如果class继承类Calendar或者XMLGregorianCalendar，使用CalendarCodec序列化 */
                 put(clazz, writer = CalendarCodec.instance);
             } else if (Clob.class.isAssignableFrom(clazz)) {
+                /** 如果class实现Clob接口，使用ClobSeriliazer序列化 */
                 put(clazz, writer = ClobSeriliazer.instance);
             } else if (TypeUtils.isPath(clazz)) {
+                /** 如果class实现java.nio.file.Path接口，使用ToStringSerializer序列化 */
                 put(clazz, writer = ToStringSerializer.instance);
             } else if (Iterator.class.isAssignableFrom(clazz)) {
+                /** 如果class实现Iterator接口，使用MiscCodec序列化 */
                 put(clazz, writer = MiscCodec.instance);
             } else {
-                if (className.startsWith("java.awt.") //
-                    && AwtCodec.support(clazz) //
-                ) {
+                /**
+                 *  如果class的name是"java.awt."开头 并且
+                 *  继承 Point、Rectangle、Font或者Color 其中之一
+                 */
+                if (className.startsWith("java.awt.")
+                        && AwtCodec.support(clazz)
+                        ) {
                     // awt
                     if (!awtError) {
                         try {
@@ -518,6 +496,7 @@ public class SerializeConfig {
                             };
                             for (String name : names) {
                                 if (name.equals(className)) {
+                                    /** 如果系统支持4中类型， 使用AwtCodec 序列化 */
                                     put(Class.forName(name), writer = AwtCodec.instance);
                                     return writer;
                                 }
@@ -528,14 +507,14 @@ public class SerializeConfig {
                         }
                     }
                 }
-                
+
                 // jdk8
                 if ((!jdk8Error) //
-                    && (className.startsWith("java.time.") //
+                        && (className.startsWith("java.time.") //
                         || className.startsWith("java.util.Optional") //
                         || className.equals("java.util.concurrent.atomic.LongAdder")
                         || className.equals("java.util.concurrent.atomic.DoubleAdder")
-                    )) {
+                )) {
                     try {
                         {
                             String[] names = new String[]{
@@ -553,6 +532,7 @@ public class SerializeConfig {
                             };
                             for (String name : names) {
                                 if (name.equals(className)) {
+                                    /** 如果系统支持JDK8中日期类型， 使用Jdk8DateCodec 序列化 */
                                     put(Class.forName(name), writer = Jdk8DateCodec.instance);
                                     return writer;
                                 }
@@ -567,6 +547,7 @@ public class SerializeConfig {
                             };
                             for (String name : names) {
                                 if (name.equals(className)) {
+                                    /** 如果系统支持JDK8中可选类型， 使用OptionalCodec 序列化 */
                                     put(Class.forName(name), writer = OptionalCodec.instance);
                                     return writer;
                                 }
@@ -579,6 +560,7 @@ public class SerializeConfig {
                             };
                             for (String name : names) {
                                 if (name.equals(className)) {
+                                    /** 如果系统支持JDK8中原子类型， 使用AdderSerializer 序列化 */
                                     put(Class.forName(name), writer = AdderSerializer.instance);
                                     return writer;
                                 }
@@ -589,9 +571,9 @@ public class SerializeConfig {
                         jdk8Error = true;
                     }
                 }
-                
+
                 if ((!oracleJdbcError) //
-                    && className.startsWith("oracle.sql.")) {
+                        && className.startsWith("oracle.sql.")) {
                     try {
                         String[] names = new String[] {
                                 "oracle.sql.DATE",
@@ -600,6 +582,7 @@ public class SerializeConfig {
 
                         for (String name : names) {
                             if (name.equals(className)) {
+                                /** 如果系统支持oralcle驱动中日期类型， 使用DateCodec 序列化 */
                                 put(Class.forName(name), writer = DateCodec.instance);
                                 return writer;
                             }
@@ -609,11 +592,12 @@ public class SerializeConfig {
                         oracleJdbcError = true;
                     }
                 }
-                
+
                 if ((!springfoxError) //
-                    && className.equals("springfox.documentation.spring.web.json.Json")) {
+                        && className.equals("springfox.documentation.spring.web.json.Json")) {
                     try {
-                        put(Class.forName("springfox.documentation.spring.web.json.Json"), //
+                        /** 如果系统支持springfox-spring-web框架中Json类型， 使用SwaggerJsonSerializer 序列化 */
+                        put(Class.forName("springfox.documentation.spring.web.json.Json"),
                                 writer = SwaggerJsonSerializer.instance);
                         return writer;
                     } catch (ClassNotFoundException e) {
@@ -634,6 +618,7 @@ public class SerializeConfig {
 
                         for (String name : names) {
                             if (name.equals(className)) {
+                                /** 如果系统支持guava框架中日期类型， 使用GuavaCodec 序列化 */
                                 put(Class.forName(name), writer = GuavaCodec.instance);
                                 return writer;
                             }
@@ -646,6 +631,7 @@ public class SerializeConfig {
 
                 if ((!jsonnullError) && className.equals("net.sf.json.JSONNull")) {
                     try {
+                        /** 如果系统支持json-lib框架中JSONNull类型， 使用MiscCodec 序列化 */
                         put(Class.forName("net.sf.json.JSONNull"), writer = MiscCodec.instance);
                         return writer;
                     } catch (ClassNotFoundException e) {
@@ -655,18 +641,22 @@ public class SerializeConfig {
                 }
 
                 Class[] interfaces = clazz.getInterfaces();
+                /** 如果class只实现唯一接口，并且接口包含注解，使用AnnotationSerializer 序列化 */
                 if (interfaces.length == 1 && interfaces[0].isAnnotation()) {
                     return AnnotationSerializer.instance;
                 }
 
+                /** 如果使用了cglib或者javassist动态代理 */
                 if (TypeUtils.isProxy(clazz)) {
                     Class<?> superClazz = clazz.getSuperclass();
 
+                    /** 通过父类型查找序列化，父类是真实的类型 */
                     ObjectSerializer superWriter = getObjectWriter(superClazz);
                     put(clazz, superWriter);
                     return superWriter;
                 }
 
+                /** 如果使用了jdk动态代理 */
                 if (Proxy.isProxyClass(clazz)) {
                     Class handlerClass = null;
 
@@ -686,6 +676,7 @@ public class SerializeConfig {
                     }
 
                     if (handlerClass != null) {
+                        /** 根据class实现接口类型查找序列化 */
                         ObjectSerializer superWriter = getObjectWriter(handlerClass);
                         put(clazz, superWriter);
                         return superWriter;
@@ -693,12 +684,14 @@ public class SerializeConfig {
                 }
 
                 if (create) {
+                    /** 没有精确匹配，使用通用JavaBeanSerializer 序列化(假设不启用asm) */
                     writer = createJavaBeanSerializer(clazz);
                     put(clazz, writer);
                 }
             }
 
             if (writer == null) {
+                /** 尝试在已注册缓存找到特定class的序列化实例 */
                 writer = serializers.get(clazz);
             }
         }

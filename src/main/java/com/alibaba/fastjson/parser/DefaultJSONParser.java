@@ -63,8 +63,11 @@ public class DefaultJSONParser implements Closeable {
 
     public int                         resolveStatus      = NONE;
 
+    //处理多余字段时提供类型信息 https://github.com/alibaba/fastjson/wiki/ParseProcess
     private List<ExtraTypeProvider>    extraTypeProviders = null;
+    //处理多余字段 https://github.com/alibaba/fastjson/wiki/ParseProcess
     private List<ExtraProcessor>       extraProcessors    = null;
+    //对象类型解析器 适用类型 map  https://github.com/alibaba/fastjson/wiki/FieldTypeResolver
     protected FieldTypeResolver        fieldTypeResolver  = null;
 
     private boolean                    autoTypeEnable;
@@ -635,19 +638,24 @@ public class DefaultJSONParser implements Closeable {
 
     @SuppressWarnings("unchecked")
     public <T> T parseObject(Type type, Object fieldName) {
+        /** 获取json串第一个有效token */
         int token = lexer.token();
         if (token == JSONToken.NULL) {
+            /** 如果返回时null，自动预读下一个token */
             lexer.nextToken();
             return null;
         }
 
+        /** 判定token属于字符串 */
         if (token == JSONToken.LITERAL_STRING) {
+            /** 获取byte字节数据，分为十六进制和base64编码 */
             if (type == byte[].class) {
                 byte[] bytes = lexer.bytesValue();
                 lexer.nextToken();
                 return (T) bytes;
             }
 
+            /** 获取字符数组, 特殊处理String内存占用 */
             if (type == char[].class) {
                 String strVal = lexer.stringVal();
                 lexer.nextToken();
@@ -655,9 +663,11 @@ public class DefaultJSONParser implements Closeable {
             }
         }
 
+        /** 委托config进行特定类型查找反序列化实例 */
         ObjectDeserializer derializer = config.getDeserializer(type);
 
         try {
+            /** 执行反序列化 */
             return (T) derializer.deserialze(this, type, fieldName);
         } catch (JSONException e) {
             throw e;

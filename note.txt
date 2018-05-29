@@ -1,0 +1,62 @@
+1.序列化过滤器请看SerializeFilterable的几个注释，测试demo在本人的SpringMvcDemo中有测试
+
+2.反序列化拦截器请看DefaultJSONParser的几个注释，其中fieldTypeResolver在SpringMvcDemo中有测试，其余两个拦截器仅限于理解
+
+3.fastjson提供BeanToArray映射模式，可以将json object映射简化为json array 忽略key的输出，在空间和性能上有提升
+  具体见 https://github.com/alibaba/fastjson/wiki/BeanToArray_cn
+
+4.fastjson提供类级别的SerializeFilter支持,避免序列化时对所有的类型做过滤
+  具体方法SerializeConfig.getGlobalInstance().addFilter(Class<?> clazz, SerializeFilter filter)
+  具体见 https://github.com/alibaba/fastjson/wiki/Class_Level_SerializeFilter
+
+5.fastjson支持将Enum类型作为javaBean序列化输出 具体见 https://github.com/alibaba/fastjson/wiki/enum_custom_serialization
+
+6.fastjson 提供了Spring MVC HttpMessageConverter的实现 具体见 https://github.com/alibaba/fastjson/wiki/FastJsonHttpMessageConverter_CN
+
+7.spring spring-boot spring-data-redis继承fastjson 具体见 https://github.com/alibaba/fastjson/wiki 下的Integrate Fastjson in Spring
+
+8.fastjson 支持非public属性的序列化
+  1).通过Feature.SupportNonPublicField
+  2).fieldBased序列化反序列化支持 具体见 https://github.com/alibaba/fastjson/wiki/FieldBased_cn
+
+9.fastjson提供LabelFilter,用于不同的场景定制序列化,选择性的对属性进行序列化或反序列化
+  具体见 https://github.com/alibaba/fastjson/wiki/LabelFilter
+
+11.fastjson @JSONField(jsonDirect=true)支持将字符串类型的json数据直接输出替代转义输出
+   具体见 https://github.com/alibaba/fastjson/wiki/JSONField_jsonDirect_cn
+
+12.1.fastjson @JSONField(serializeUsing=A.class,deserializeUsing=B.class) 可以重写fastjson的序列化和反序列化
+   可作为复杂嵌套的json数据的反序列化方案，目标类须要继承并重写序列化和反序列化接口
+   亦可作为序列化的定制输出 具体见 https://github.com/alibaba/fastjson/wiki/JSONField
+
+12.2.fastjson可以对指定类型进行自定义的序列化和反序列化方案
+   具体见 https://github.com/alibaba/fastjson/wiki/ObjectSerializer_cn  https://github.com/alibaba/fastjson/wiki/ObjectDeserializer_cn
+
+12.3.fastjson支持实现PropertyProcessable接口自定义反序列化策略
+   具体见 https://github.com/alibaba/fastjson/wiki/PropertyProcessable_cn
+
+12.4.fastjson提供@JSONPOJOBuilder来定制如何反序列化 具体见 https://github.com/alibaba/fastjson/wiki/BuilderSupport
+
+13.fastjson @JSONField(format = "yyyy-MM-dd HH:mm:ss") 可以对日期进行格式化
+
+14.fastjson @JSONType(seeAlso={A.class, B.class})可以由父类反序列化时自动匹配对应的子类
+   具体见 https://github.com/alibaba/fastjson/wiki/JSONType_seeAlso_cn
+
+15.fastjson @JSONField(alternateNames = {"user", "person"})支持反序列化是支持多个不同字段名称
+   具体见  https://github.com/alibaba/fastjson/wiki/JSONField_alternateNames_cn
+
+16.fastjson JSON.toJSONString(obj, SerializerFeature.DisableCircularReferenceDetect); 可关闭循环引用
+
+17.fastjson 在反序列化是支持对多余字段进行自定义处理 具体见 https://github.com/alibaba/fastjson/wiki/ParseProcess
+
+18.fastjson可以指定key的命名匹配规则 具体见 https://github.com/alibaba/fastjson/wiki/PropertyNamingStrategy_cn
+
+19.fastjson JSON.toJSONString(obj, SerializerFeature.WriteNonStringValueAsString); 允许非string类型以string类型输出
+
+20.fastjson JSON.toJSONString(obj, SerializerFeature.IgnoreErrorGetter); 忽略那些抛错的getter方法
+   具体见 https://github.com/alibaba/fastjson/wiki/SerializerFeature_IgnoreErrorGetter_cn
+
+21.fastjson TypeReference支持泛型类的反序列化，1.2.9之后支持泛型参数实现通用的反序列化支持
+   具体见 https://github.com/alibaba/fastjson/wiki/TypeReference
+
+22.fastjson支持序列化时对null值的特殊处理 具体见 https://github.com/alibaba/fastjson/wiki/WriteNull_cn

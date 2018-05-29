@@ -29,19 +29,29 @@ import com.alibaba.fastjson.serializer.SerializerFeature;
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ ElementType.METHOD, ElementType.FIELD, ElementType.PARAMETER })
 public @interface JSONField {
+
+    //https://github.com/alibaba/fastjson/wiki/JSONField
     /**
-     * config encode/decode ordinal
-     * @since 1.1.42
+     * config encode/decode ordinal  配置序列化和反序列化的顺序
+     * @since 1.1.42  1.1.42版本之后才支持
      * @return
      */
     int ordinal() default 0;
 
+    //指定字段的名称
     String name() default "";
 
+    /**
+     * 指定字段的格式，对日期格式有用
+     * 亦可支持较大的byte[]输出 具体见 https://github.com/alibaba/fastjson/wiki/JSONField_format_gzip
+     * @return
+     */
     String format() default "";
 
+    //是否序列化
     boolean serialize() default true;
 
+    //是否反序列化
     boolean deserialize() default true;
 
     SerializerFeature[] serialzeFeatures() default {};
@@ -51,6 +61,7 @@ public @interface JSONField {
     String label() default "";
     
     /**
+     * 具体见 https://github.com/alibaba/fastjson/wiki/JSONField_jsonDirect_cn
      * @since 1.2.12
      */
     boolean jsonDirect() default false;
@@ -72,10 +83,13 @@ public @interface JSONField {
     /**
      * @since 1.2.21
      * @return the alternative names of the field when it is deserialized
+     * 反序列化支持多个不同字段名称
+     * https://github.com/alibaba/fastjson/wiki/JSONField_alternateNames_cn
      */
     String[] alternateNames() default {};
 
     /**
+     * 具体见 https://github.com/alibaba/fastjson/wiki/JSONField_unwrapped_cn
      * @since 1.2.31
      */
     boolean unwrapped() default false;

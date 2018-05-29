@@ -20,9 +20,9 @@ import java.util.Set;
  */
 public class SimplePropertyPreFilter implements PropertyPreFilter {
 
-    private final Class<?>    clazz;
-    private final Set<String> includes = new HashSet<String>();
-    private final Set<String> excludes = new HashSet<String>();
+    private final Class<?>    clazz;//需要执行过滤的Class类型
+    private final Set<String> includes = new HashSet<String>();//这些属性不会被过滤
+    private final Set<String> excludes = new HashSet<String>();//这些属性会被过滤
     private int               maxLevel = 0;
 
     public SimplePropertyPreFilter(String... properties){
@@ -69,7 +69,7 @@ public class SimplePropertyPreFilter implements PropertyPreFilter {
         if (source == null) {
             return true;
         }
-
+        //不是须要过滤的Class类型则不须要拦截
         if (clazz != null && !clazz.isInstance(source)) {
             return true;
         }

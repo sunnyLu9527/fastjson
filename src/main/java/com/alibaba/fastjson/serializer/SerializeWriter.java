@@ -33,9 +33,12 @@ import static com.alibaba.fastjson.util.IOUtils.replaceChars;
  * @author wenshao[szujobs@hotmail.com]
  */
 public final class SerializeWriter extends Writer {
+    /** 字符类型buffer */
     private final static ThreadLocal<char[]> bufLocal      = new ThreadLocal<char[]>();
+    /** 字节类型buffer */
     private final static ThreadLocal<byte[]> bytesBufLocal = new ThreadLocal<byte[]>();
 
+    /** 存储序列化结果buffer */
     protected char                           buf[];
 
     /**
@@ -43,21 +46,31 @@ public final class SerializeWriter extends Writer {
      */
     protected int                            count;
 
+    /** 序列化的特性，比如写枚举按照名字还是枚举值 */
     protected int                            features;
 
+    /** 序列化输出器 */
     private final Writer                     writer;
 
+    /** 是否使用单引号输出json */
     protected boolean                        useSingleQuotes;
+    /** 输出字段是否追加 "和：字符 */
     protected boolean                        quoteFieldNames;
+    /** 是否对字段排序 */
     protected boolean                        sortField;
+    /** 禁用字段循环引用探测 */
     protected boolean                        disableCircularReferenceDetect;
     protected boolean                        beanToArray;
+    /** 按照toString方式获取对象字面值 */
     protected boolean                        writeNonStringValueAsString;
+    /** 如果字段默认值不输出，比如原型int，默认值0不输出 */
     protected boolean                        notWriteDefaultValue;
+    /** 序列化枚举时使用枚举name */
     protected boolean                        writeEnumUsingName;
+    /** 序列化枚举时使用枚举toString值 */
     protected boolean                        writeEnumUsingToString;
     protected boolean                        writeDirect;
-
+    /** key分隔符，默认单引号是'，双引号是" */
     protected char                           keySeperator;
 
     protected int                            maxBufSize = -1;
@@ -226,14 +239,17 @@ public final class SerializeWriter extends Writer {
      */
     public void write(int c) {
         int newcount = count + 1;
+        /** 如果当前存储空间不够 */
         if (newcount > buf.length) {
             if (writer == null) {
                 expandCapacity(newcount);
             } else {
+                /** 强制流输出并刷新缓冲区 */
                 flush();
                 newcount = 1;
             }
         }
+        /** 存储单字符到buffer并更新计数 */
         buf[count] = (char) c;
         count = newcount;
     }
@@ -256,17 +272,27 @@ public final class SerializeWriter extends Writer {
             return;
         }
 
+        /** 计算总共字符串长度 */
         int newcount = count + len;
+        /** 如果当前存储空间不够 */
         if (newcount > buf.length) {
             if (writer == null) {
                 expandCapacity(newcount);
             } else {
+                /**
+                 * 如果字符数组c超过缓冲区大小, 进行循环拷贝
+                 */
                 do {
+                    /** 计算当前buffer剩余容纳字符数 */
                     int rest = buf.length - count;
+                    /** c[off, off + rest) 拷贝到buf[count, ...]中*/
                     System.arraycopy(c, off, buf, count, rest);
                     count = buf.length;
+                    /** 强制刷新输出流，会重置count = 0 */
                     flush();
+                    /** 计算剩余需要拷贝的字符数量 */
                     len -= rest;
+                    /** 剩余要拷贝字符在c中偏移量(索引) */
                     off += rest;
                 } while (len > buf.length);
                 newcount = len;
@@ -277,6 +303,10 @@ public final class SerializeWriter extends Writer {
 
     }
 
+    /**
+     * 对字符数组扩容
+     * @param minimumCapacity
+     */
     public void expandCapacity(int minimumCapacity) {
         if (maxBufSize != -1 && minimumCapacity >= maxBufSize) {
             throw new JSONException("serialize exceeded MAX_OUTPUT_LENGTH=" + maxBufSize + ", minimumCapacity=" + minimumCapacity);
@@ -317,22 +347,33 @@ public final class SerializeWriter extends Writer {
      * @param len Number of characters to be written
      */
     public void write(String str, int off, int len) {
+        /** 计算总共字符串长度 */
         int newcount = count + len;
+        /** 如果当前存储空间不够 */
         if (newcount > buf.length) {
             if (writer == null) {
                 expandCapacity(newcount);
             } else {
+                /**
+                 * 如果字符串str超过缓冲区大小, 进行循环拷贝
+                 */
                 do {
+                    /** 计算当前buffer剩余容纳字符数 */
                     int rest = buf.length - count;
+                    /** 将字符串str[off, off + rest) 拷贝到buf[count, ...]中*/
                     str.getChars(off, off + rest, buf, count);
                     count = buf.length;
+                    /** 强制刷新输出流，会重置count = 0 */
                     flush();
+                    /** 计算剩余需要拷贝的字符数量 */
                     len -= rest;
+                    /** 剩余要拷贝字符在str中偏移量(索引) */
                     off += rest;
                 } while (len > buf.length);
                 newcount = len;
             }
         }
+        /** 存储空间充足，直接将str[off, off + len) 拷贝到buf[count, ...]中*/
         str.getChars(off, off + len, buf, count);
         count = newcount;
     }
@@ -490,25 +531,30 @@ public final class SerializeWriter extends Writer {
     }
 
     public void writeInt(int i) {
+        /** 如果是整数最小值，调用字符串函数输出到缓冲区*/
         if (i == Integer.MIN_VALUE) {
             write("-2147483648");
             return;
         }
-
+        /** 根据数字判断占用的位数，负数会多一位用于存储字符`-` */
         int size = (i < 0) ? IOUtils.stringSize(-i) + 1 : IOUtils.stringSize(i);
 
         int newcount = count + size;
+        /** 如果当前存储空间不够 */
         if (newcount > buf.length) {
             if (writer == null) {
+                /** 扩容到为原有buf容量1.5倍+1, copy原有buf的字符*/
                 expandCapacity(newcount);
             } else {
                 char[] chars = new char[size];
+                /** 将整数i转换成单字符并存储到chars数组 */
                 IOUtils.getChars(i, size, chars);
+                /** 将chars字符数组内容写到buffer中*/
                 write(chars, 0, chars.length);
                 return;
             }
         }
-
+        /** 如果buffer空间够，直接将字符写到buffer中 */
         IOUtils.getChars(i, newcount, buf);
 
         count = newcount;
@@ -516,6 +562,7 @@ public final class SerializeWriter extends Writer {
 
     public void writeByteArray(byte[] bytes) {
         if (isEnabled(SerializerFeature.WriteClassName.mask)) {
+            /** 如果开启序列化特性WriteClassName，直接写16进制字符 */
             writeHex(bytes);
             return;
         }
@@ -524,12 +571,13 @@ public final class SerializeWriter extends Writer {
         final char quote = useSingleQuotes ? '\'' : '"';
         if (bytesLen == 0) {
             String emptyString = useSingleQuotes ? "''" : "\"\"";
+            /** 如果字节数组长度为0，输出空白字符 */
             write(emptyString);
             return;
         }
 
         final char[] CA = IOUtils.CA;
-
+        /** 验证长度是24bit位整数倍 */
         int eLen = (bytesLen / 3) * 3; // Length of even 24-bits.
         int charsLen = ((bytesLen - 1) / 3 + 1) << 2; // base64 character count
         // char[] chars = new char[charsLen];
@@ -599,6 +647,7 @@ public final class SerializeWriter extends Writer {
     }
 
     public void writeHex(byte[] bytes) {
+        /** 计算总共字符长度, 乘以2 代表一个字符要占用2字节, 3代表要添加 x 和 前后添加' */
         int newcount = count + bytes.length * 2 + 3;
         if (newcount > buf.length) {
             if (writer != null) {
@@ -611,9 +660,15 @@ public final class SerializeWriter extends Writer {
                     byte b = bytes[i];
 
                     int a = b & 0xFF;
+                    /** 取字节的高四位 1111 0000*/
                     int b0 = a >> 4;
+                    /** 取字节的低四位 0000 1111*/
                     int b1 = a & 0xf;
 
+                    /** 索引低索引存储字节高位
+                     *  如果4位表示的数字是 0~9, 转换为ascii的 0~9
+                     *  如果4位表示的不是数字, 转换为16进制ascii码字符
+                     */
                     chars[pos++] = (char) (b0 + (b0 < 10 ? 48 : 55));
                     chars[pos++] = (char) (b1 + (b1 < 10 ? 48 : 55));
                 }
@@ -625,6 +680,7 @@ public final class SerializeWriter extends Writer {
                 }
                 return;
             }
+            /** buffer容量不够并且输出器为空，触发扩容 */
             expandCapacity(newcount);
         }
 
@@ -635,9 +691,15 @@ public final class SerializeWriter extends Writer {
             byte b = bytes[i];
 
             int a = b & 0xFF;
+            /** 取字节的高四位 */
             int b0 = a >> 4;
+            /** 取字节的低四位 */
             int b1 = a & 0xf;
 
+            /** 索引低索引存储字节高位
+             *  如果4位表示的数字是 0~9, 转换为ascii的 0~9
+             *  如果4位表示的不是数字, 转换为16进制ascii码字符
+             */
             buf[count++] = (char) (b0 + (b0 < 10 ? 48 : 55));
             buf[count++] = (char) (b1 + (b1 < 10 ? 48 : 55));
         }
@@ -645,16 +707,19 @@ public final class SerializeWriter extends Writer {
     }
 
     public void writeFloat(float value, boolean checkWriteClassName) {
+        /** 如果value不合法或者是无穷数，调用writeNull */
         if (Float.isNaN(value) // 
                 || Float.isInfinite(value)) {
             writeNull();
         } else {
+            /** 将高精度float转换为字符串 */
             String floatText= Float.toString(value);
+            /** 启动WriteNullNumberAsZero特性，会将结尾.0去除 */
             if (isEnabled(SerializerFeature.WriteNullNumberAsZero) && floatText.endsWith(".0")) {
                 floatText = floatText.substring(0, floatText.length() - 2);
             }
             write(floatText);
-            
+            /** 如果开启序列化WriteClassName特性，输出float类型 */
             if (checkWriteClassName && isEnabled(SerializerFeature.WriteClassName)) {
                 write('F');
             }
@@ -662,17 +727,20 @@ public final class SerializeWriter extends Writer {
     }
 
     public void writeDouble(double doubleValue, boolean checkWriteClassName) {
+        /** 如果doubleValue不合法或者是无穷数，调用writeNull */
         if (Double.isNaN(doubleValue) //
                 || Double.isInfinite(doubleValue)) {
             writeNull();
         } else {
+            /** 将高精度double转换为字符串 */
             String doubleText = Double.toString(doubleValue);
+            /** 启动WriteNullNumberAsZero特性，会将结尾.0去除 */
             if (isEnabled(SerializerFeature.WriteNullNumberAsZero) && doubleText.endsWith(".0")) {
                 doubleText = doubleText.substring(0, doubleText.length() - 2);
             }
-            
+            /** 调用字符串输出方法 */
             write(doubleText);
-
+            /** 如果开启序列化WriteClassName特性，输出Double类型 */
             if (checkWriteClassName && isEnabled(SerializerFeature.WriteClassName)) {
                 write('D');
             }
@@ -681,23 +749,28 @@ public final class SerializeWriter extends Writer {
 
     public void writeEnum(Enum<?> value) {
         if (value == null) {
+            /** 如果枚举value为空，调用writeNull输出 */
             writeNull();
             return;
         }
         
         String strVal = null;
+        /** 如果开启序列化输出枚举名字作为属性值 */
         if (writeEnumUsingName && !writeEnumUsingToString) {
             strVal = value.name();
         } else if (writeEnumUsingToString) {
+            /** 采用枚举默认toString方法作为属性值 */
             strVal = value.toString();;
         }
 
         if (strVal != null) {
+            /** 如果开启引号特性，输出json包含引号的字符串 */
             char quote = isEnabled(SerializerFeature.UseSingleQuotes) ? '\'' : '"';
             write(quote);
             write(strVal);
             write(quote);
         } else {
+            /** 输出枚举所在的索引号 */
             writeInt(value.ordinal());
         }
     }
@@ -709,19 +782,23 @@ public final class SerializeWriter extends Writer {
 
         if (i == Long.MIN_VALUE) {
             if (needQuotationMark) write("\"-9223372036854775808\"");
+            /** 如果是长整数最小值，调用字符串函数输出到缓冲区*/
             else write("-9223372036854775808");
             return;
         }
-
+        /** 根据数字判断占用的位数，负数会多一位用于存储字符`-` */
         int size = (i < 0) ? IOUtils.stringSize(-i) + 1 : IOUtils.stringSize(i);
 
         int newcount = count + size;
         if (needQuotationMark) newcount += 2;
+        /** 如果当前存储空间不够 */
         if (newcount > buf.length) {
             if (writer == null) {
+                /** 扩容到为原有buf容量1.5倍+1, copy原有buf的字符*/
                 expandCapacity(newcount);
             } else {
                 char[] chars = new char[size];
+                /** 将长整数i转换成单字符并存储到chars数组 */
                 IOUtils.getChars(i, size, chars);
                 if (needQuotationMark) {
                     write('"');
@@ -733,7 +810,7 @@ public final class SerializeWriter extends Writer {
                 return;
             }
         }
-
+        /** 添加引号 */
         if (needQuotationMark) {
             buf[count] = '"';
             IOUtils.getChars(i, newcount - 1, buf);
@@ -746,6 +823,7 @@ public final class SerializeWriter extends Writer {
     }
 
     public void writeNull() {
+        /** 调用输出字符串null */
         write("null");
     }
     
@@ -754,19 +832,19 @@ public final class SerializeWriter extends Writer {
     }
     
     public void writeNull(int beanFeatures , int feature) {
-        if ((beanFeatures & feature) == 0 //
+        if ((beanFeatures & feature) == 0 //判断序列化特性中是否存在当前特性
             && (this.features & feature) == 0) {
             writeNull();
             return;
         }
         
-        if (feature == SerializerFeature.WriteNullListAsEmpty.mask) {
+        if (feature == SerializerFeature.WriteNullListAsEmpty.mask) {//将null的list序列化为"[]"输出
             write("[]");
-        } else if (feature == SerializerFeature.WriteNullStringAsEmpty.mask) {
+        } else if (feature == SerializerFeature.WriteNullStringAsEmpty.mask) {//将null字符串序列化为""输出
             writeString("");
-        } else if (feature == SerializerFeature.WriteNullBooleanAsFalse.mask) {
+        } else if (feature == SerializerFeature.WriteNullBooleanAsFalse.mask) {//将null的Boolean类型序列化为"false"输出
             write("false");
-        } else if (feature == SerializerFeature.WriteNullNumberAsZero.mask) {
+        } else if (feature == SerializerFeature.WriteNullNumberAsZero.mask) {//将null的数字序列化为'0'输出
             write('0');
         } else {
             writeNull();
@@ -775,8 +853,10 @@ public final class SerializeWriter extends Writer {
     
     public void writeStringWithDoubleQuote(String text, final char seperator) {
         if (text == null) {
+            /** 如果字符换为空，输出null字符串 */
             writeNull();
             if (seperator != 0) {
+                /** 如果分隔符不为空白字符' '，输出分隔符 */
                 write(seperator);
             }
             return;
@@ -787,16 +867,19 @@ public final class SerializeWriter extends Writer {
         if (seperator != 0) {
             newcount++;
         }
-
+        /** 如果当前存储空间不够 */
         if (newcount > buf.length) {
             if (writer != null) {
+                /** 写双引号字符 */
                 write('"');
 
                 for (int i = 0; i < text.length(); ++i) {
+                    /** 循环提取字符串中字符 */
                     char ch = text.charAt(i);
 
                     if (isEnabled(SerializerFeature.BrowserSecure)) {
                        if (ch == '(' || ch == ')' || ch == '<' || ch == '>') {
+                           /** ascii转换成native编码 */
                             write('\\');
                             write('u');
                             write(IOUtils.DIGITS[(ch >>> 12) & 15]);
@@ -808,20 +891,22 @@ public final class SerializeWriter extends Writer {
                     }
 
                     if (isEnabled(SerializerFeature.BrowserCompatible)) {
-                        if (ch == '\b' //
-                            || ch == '\f' //
-                            || ch == '\n' //
-                            || ch == '\r' //
-                            || ch == '\t' //
-                            || ch == '"' //
-                            || ch == '/' //
-                            || ch == '\\') {
-                            write('\\');
+                        if (ch == '\b'      //  退格
+                                || ch == '\f'   //  分页
+                                || ch == '\n'   //  换行
+                                || ch == '\r'   //  回车
+                                || ch == '\t'   //  tab
+                                || ch == '"'    //  双引号
+                                || ch == '/'    //  左反斜杠
+                                || ch == '\\') {//  单引号
+                            /** 输出转义字符 + 字符ascii码 */
+                            write('\\'); //  右反斜杠
                             write(replaceChars[(int) ch]);
                             continue;
                         }
 
                         if (ch < 32) {
+                            /** ascii转换成native编码 */
                             write('\\');
                             write('u');
                             write('0');
@@ -832,6 +917,7 @@ public final class SerializeWriter extends Writer {
                         }
 
                         if (ch >= 127) {
+                            /** ascii转换成native编码 */
                             write('\\');
                             write('u');
                             write(IOUtils.DIGITS[(ch >>> 12) & 15]);
@@ -841,6 +927,7 @@ public final class SerializeWriter extends Writer {
                             continue;
                         }
                     } else {
+                        /** ascii转换成native编码 */
                         if (ch < IOUtils.specicalFlags_doubleQuotes.length
                             && IOUtils.specicalFlags_doubleQuotes[ch] != 0 //
                             || (ch == '/' && isEnabled(SerializerFeature.WriteSlashAsSpecial))) {
@@ -857,16 +944,17 @@ public final class SerializeWriter extends Writer {
                             continue;
                         }
                     }
-
+                    /** 非特殊字符，直接输出 */
                     write(ch);
                 }
-
+                /** 字符串结束 */
                 write('"');
                 if (seperator != 0) {
                     write(seperator);
                 }
                 return;
             }
+            /** buffer容量不够并且输出器为空，触发扩容 */
             expandCapacity(newcount);
         }
 
@@ -874,6 +962,7 @@ public final class SerializeWriter extends Writer {
         int end = start + len;
 
         buf[count] = '\"';
+        /** buffer能够容纳字符串，直接拷贝text到buf缓冲数组 */
         text.getChars(0, len, buf, start);
 
         count = newcount;
@@ -882,11 +971,13 @@ public final class SerializeWriter extends Writer {
             int lastSpecialIndex = -1;
 
             for (int i = start; i < end; ++i) {
+                /** 循环提取字符串中字符 */
                 char ch = buf[i];
 
                 if (ch == '"' //
                     || ch == '/' //
                     || ch == '\\') {
+                    /** 记录指定字符最后出现的位置 */
                     lastSpecialIndex = i;
                     newcount += 1;
                     continue;
@@ -897,6 +988,7 @@ public final class SerializeWriter extends Writer {
                     || ch == '\n' //
                     || ch == '\r' //
                     || ch == '\t') {
+                    /** 记录指定字符最后出现的位置 */
                     lastSpecialIndex = i;
                     newcount += 1;
                     continue;
@@ -914,12 +1006,12 @@ public final class SerializeWriter extends Writer {
                     continue;
                 }
             }
-
+            /** 如果存储空间不足，触发到(1.5倍buffer大小+1) */
             if (newcount > buf.length) {
                 expandCapacity(newcount);
             }
             count = newcount;
-
+            /** 逆向从指定特殊字符开始遍历 */
             for (int i = lastSpecialIndex; i >= start; --i) {
                 char ch = buf[i];
 
@@ -928,16 +1020,19 @@ public final class SerializeWriter extends Writer {
                     || ch == '\n' //
                     || ch == '\r' //
                     || ch == '\t') {
+                    /** 将字符后移一位，插入转译字符\ */
                     System.arraycopy(buf, i + 1, buf, i + 2, end - i - 1);
                     buf[i] = '\\';
+                    /** 将特殊字符转换成普通单字符 */
                     buf[i + 1] = replaceChars[(int) ch];
                     end += 1;
                     continue;
                 }
 
                 if (ch == '"' //
-                    || ch == '/' //
-                    || ch == '\\') {
+                        || ch == '/' //
+                        || ch == '\\') {
+                    /** 和上面处理一致，不需要单独替换成普通字符 */
                     System.arraycopy(buf, i + 1, buf, i + 2, end - i - 1);
                     buf[i] = '\\';
                     buf[i + 1] = ch;
@@ -947,6 +1042,7 @@ public final class SerializeWriter extends Writer {
 
                 if (ch < 32) {
                     System.arraycopy(buf, i + 1, buf, i + 6, end - i - 1);
+                    /** ascii转换成native编码 */
                     buf[i] = '\\';
                     buf[i + 1] = 'u';
                     buf[i + 2] = '0';
@@ -959,6 +1055,7 @@ public final class SerializeWriter extends Writer {
 
                 if (ch >= 127) {
                     System.arraycopy(buf, i + 1, buf, i + 6, end - i - 1);
+                    /** ascii转换成native编码 */
                     buf[i] = '\\';
                     buf[i + 1] = 'u';
                     buf[i + 2] = IOUtils.DIGITS[(ch >>> 12) & 15];
@@ -968,7 +1065,7 @@ public final class SerializeWriter extends Writer {
                     end += 5;
                 }
             }
-
+            /** 追加引用符号 */
             if (seperator != 0) {
                 buf[count - 2] = '\"';
                 buf[count - 1] = seperator;
@@ -1028,11 +1125,12 @@ public final class SerializeWriter extends Writer {
 
         if (specialCount > 0) {
             newcount += specialCount;
+            /** 包含特殊字符并且buffer空间不够，触发扩容 */
             if (newcount > buf.length) {
                 expandCapacity(newcount);
             }
             count = newcount;
-
+            /** 将特殊字符转换成native编码，目的是节省存储空间*/
             if (specialCount == 1) {
                 if (lastSpecial == '\u2028') {
                     int srcPos = lastSpecialIndex + 1;
@@ -1550,6 +1648,7 @@ public final class SerializeWriter extends Writer {
 
     public void write(List<String> list) {
         if (list.isEmpty()) {
+            /** 空字符列表，输出[]字符串 */
             write("[]");
             return;
         }
@@ -1557,14 +1656,17 @@ public final class SerializeWriter extends Writer {
         int offset = count;
         final int initOffset = offset;
         for (int i = 0, list_size = list.size(); i < list_size; ++i) {
+            /** 循环获取列表中包含的字符串 */
             String text = list.get(i);
 
             boolean hasSpecial = false;
             if (text == null) {
+                /** list包含特殊的null值 */
                 hasSpecial = true;
             } else {
                 for (int j = 0, len = text.length(); j < len; ++j) {
                     char ch = text.charAt(j);
+                    /** 包含指定特殊字符 */
                     if (hasSpecial = (ch < ' ' //
                                       || ch > '~' //
                                       || ch == '"' //
@@ -1579,26 +1681,31 @@ public final class SerializeWriter extends Writer {
                 write('[');
                 for (int j = 0; j < list.size(); ++j) {
                     text = list.get(j);
+                    /** 每个字符用,隔开输出 */
                     if (j != 0) {
                         write(',');
                     }
 
                     if (text == null) {
+                        /** 字符串为空，直接输出null字符串 */
                         write("null");
                     } else {
+                        /** 使用双引号输出，并且处理特殊字符, 下文有分析 */
                         writeStringWithDoubleQuote(text, (char) 0);
                     }
                 }
                 write(']');
                 return;
             }
-
+            /** 计算新的字符占用空间，额外3个字符用于存储 "," */
             int newcount = offset + text.length() + 3;
             if (i == list.size() - 1) {
                 newcount++;
             }
+            /** 如果当前存储空间不够*/
             if (newcount > buf.length) {
                 count = offset;
+                /** 扩容到为原有buf容量1.5倍+1, copy原有buf的字符*/
                 expandCapacity(newcount);
             }
 
@@ -1608,10 +1715,12 @@ public final class SerializeWriter extends Writer {
                 buf[offset++] = ',';
             }
             buf[offset++] = '"';
+            /** 拷贝text字符串到buffer数组中 */
             text.getChars(0, text.length(), buf, offset);
             offset += text.length();
             buf[offset++] = '"';
         }
+        /** 最终构造列表形式 ["element", "element", ...] */
         buf[offset++] = ']';
         count = offset;
     }
@@ -1627,41 +1736,57 @@ public final class SerializeWriter extends Writer {
         }
     }
 
+    /**
+     * 序列化Boolean类型字段键值对
+     * @param seperator
+     * @param name
+     * @param value
+     */
     public void writeFieldValue(char seperator, String name, boolean value) {
         if (!quoteFieldNames) {
+            /** 如果不需要输出双引号，则一次输出字段分隔符，字段名字，字段值 */
             write(seperator);
             writeFieldName(name);
             write(value);
             return;
         }
+        /** true 占用4位， false 占用5位 */
         int intSize = value ? 4 : 5;
 
         int nameLen = name.length();
+        /** 输出总长度， 中间的4  代表 key 和 value 总共占用4个引号 */
         int newcount = count + nameLen + 4 + intSize;
         if (newcount > buf.length) {
             if (writer != null) {
+                /** 依次输出字段分隔符，字段：字段值 */
                 write(seperator);
                 writeString(name);
                 write(':');
                 write(value);
                 return;
             }
+            /** 输出器writer为null触发扩容，扩容到为原有buf容量1.5倍+1, copy原有buf的字符*/
             expandCapacity(newcount);
         }
 
         int start = count;
         count = newcount;
 
+        /** 输出字段分隔符，一般是, */
         buf[start] = seperator;
 
         int nameEnd = start + nameLen + 1;
 
+        /** 输出字段属性分隔符，一般是单引号或双引号 */
         buf[start + 1] = keySeperator;
 
+        /** 输出字段名称 */
         name.getChars(0, nameLen, buf, start + 2);
 
+        /** 字段名称添加分隔符，一般是单引号或双引号 */
         buf[nameEnd + 1] = keySeperator;
 
+        /** 输出boolean类型字符串值 */
         if (value) {
             System.arraycopy(":true".toCharArray(), 0, buf, nameEnd + 2, 5);
         } else {
@@ -1671,20 +1796,30 @@ public final class SerializeWriter extends Writer {
 
     public void write(boolean value) {
         if (value) {
+            /** 输出true字符串 */
             write("true");
         } else {
+            /** 输出false字符串 */
             write("false");
         }
     }
 
+    /**
+     * 序列化Int类型字段键值对
+     * @param seperator
+     * @param name
+     * @param value
+     */
     public void writeFieldValue(char seperator, String name, int value) {
         if (value == Integer.MIN_VALUE || !quoteFieldNames) {
+            /** 如果是整数最小值或不需要输出双引号，则一次输出字段分隔符，字段名字，字段值 */
             write(seperator);
             writeFieldName(name);
             writeInt(value);
             return;
         }
 
+        /** 根据数字判断占用的位数，负数会多一位用于存储字符`-` */
         int intSize = (value < 0) ? IOUtils.stringSize(-value) + 1 : IOUtils.stringSize(value);
 
         int nameLen = name.length();
@@ -1696,23 +1831,28 @@ public final class SerializeWriter extends Writer {
                 writeInt(value);
                 return;
             }
+            /** 扩容到为原有buf容量1.5倍+1, copy原有buf的字符*/
             expandCapacity(newcount);
         }
 
         int start = count;
         count = newcount;
 
+        /** 输出字段分隔符，一般是, */
         buf[start] = seperator;
 
         int nameEnd = start + nameLen + 1;
 
+        /** 输出字段属性分隔符，一般是单引号或双引号 */
         buf[start + 1] = keySeperator;
 
+        /** 输出字段名称 */
         name.getChars(0, nameLen, buf, start + 2);
 
         buf[nameEnd + 1] = keySeperator;
         buf[nameEnd + 2] = ':';
 
+        /** 输出整数值，对整数转化成单字符 */
         IOUtils.getChars(value, count, buf);
     }
 
@@ -2129,6 +2269,7 @@ public final class SerializeWriter extends Writer {
             if (newcount > buf.length) {
                 expandCapacity(newcount);
             }
+            /** 如果字符串为null，输出"null"字符串 */
             "null".getChars(0, 4, buf, count);
             count = newcount;
             return;
@@ -2138,11 +2279,13 @@ public final class SerializeWriter extends Writer {
         int newcount = count + len + 2;
         if (newcount > buf.length) {
             if (writer != null) {
+                /** 使用单引号输出字符串值 */
                 write('\'');
                 for (int i = 0; i < text.length(); ++i) {
                     char ch = text.charAt(i);
                     if (ch <= 13 || ch == '\\' || ch == '\'' //
-                        || (ch == '/' && isEnabled(SerializerFeature.WriteSlashAsSpecial))) {
+                            || (ch == '/' && isEnabled(SerializerFeature.WriteSlashAsSpecial))) {
+                        /** 如果包含特殊字符 或者 单字符'\' ''' ，添加转译并且替换为普通字符*/
                         write('\\');
                         write(replaceChars[(int) ch]);
                     } else {
@@ -2152,6 +2295,7 @@ public final class SerializeWriter extends Writer {
                 write('\'');
                 return;
             }
+            /** buffer容量不够并且输出器为空，触发扩容 */
             expandCapacity(newcount);
         }
 
@@ -2159,6 +2303,7 @@ public final class SerializeWriter extends Writer {
         int end = start + len;
 
         buf[count] = '\'';
+        /** buffer能够容纳字符串，直接拷贝text到buf缓冲数组 */
         text.getChars(0, len, buf, start);
         count = newcount;
 
@@ -2168,7 +2313,8 @@ public final class SerializeWriter extends Writer {
         for (int i = start; i < end; ++i) {
             char ch = buf[i];
             if (ch <= 13 || ch == '\\' || ch == '\'' //
-                || (ch == '/' && isEnabled(SerializerFeature.WriteSlashAsSpecial))) {
+                    || (ch == '/' && isEnabled(SerializerFeature.WriteSlashAsSpecial))) {
+                /** 记录特殊字符个数和最后一个特殊字符索引 */
                 specialCount++;
                 lastSpecialIndex = i;
                 lastSpecial = ch;
@@ -2182,6 +2328,7 @@ public final class SerializeWriter extends Writer {
         count = newcount;
 
         if (specialCount == 1) {
+            /** 将字符后移一位，插入转译字符\ 并替换特殊字符为普通字符*/
             System.arraycopy(buf, lastSpecialIndex + 1, buf, lastSpecialIndex + 2, end - lastSpecialIndex - 1);
             buf[lastSpecialIndex] = '\\';
             buf[++lastSpecialIndex] = replaceChars[(int) lastSpecial];
@@ -2194,7 +2341,8 @@ public final class SerializeWriter extends Writer {
                 char ch = buf[i];
 
                 if (ch <= 13 || ch == '\\' || ch == '\'' //
-                    || (ch == '/' && isEnabled(SerializerFeature.WriteSlashAsSpecial))) {
+                        || (ch == '/' && isEnabled(SerializerFeature.WriteSlashAsSpecial))) {
+                    /** 将字符后移一位，插入转译字符\ 并替换特殊字符为普通字符*/
                     System.arraycopy(buf, i + 1, buf, i + 2, end - i - 1);
                     buf[i] = '\\';
                     buf[i + 1] = replaceChars[(int) ch];
@@ -2203,6 +2351,7 @@ public final class SerializeWriter extends Writer {
             }
         }
 
+        /** 字符串结尾添加单引号引用 */
         buf[count - 1] = '\'';
     }
 
@@ -2296,19 +2445,23 @@ public final class SerializeWriter extends Writer {
 
     public void writeFieldName(String key, boolean checkSpecial) {
         if (key == null) {
+            /** 如果字段key为null， 输出 "null:" */
             write("null:");
             return;
         }
 
         if (useSingleQuotes) {
             if (quoteFieldNames) {
+                /** 使用单引号并且在字段后面加'：'输出 标准的json key*/
                 writeStringWithSingleQuote(key);
                 write(':');
             } else {
+                /** 输出key，如果有特殊字符会自动添加单引号 */
                 writeKeyWithSingleQuoteIfHasSpecial(key);
             }
         } else {
             if (quoteFieldNames) {
+                /** 使用双引号输出json key 并添加 ： */
                 writeStringWithDoubleQuote(key, ':');
             } else {
                 boolean hashSpecial = key.length() == 0;
@@ -2321,8 +2474,10 @@ public final class SerializeWriter extends Writer {
                     }
                 }
                 if (hashSpecial) {
+                    /** 如果包含特殊字符，会进行特殊字符转换输出，eg: 使用转换后的native编码输出 */
                     writeStringWithDoubleQuote(key, ':');
                 } else {
+                    /** 输出字段不加引号 */
                     write(key);
                     write(':');
                 }
@@ -2338,6 +2493,7 @@ public final class SerializeWriter extends Writer {
         if (newcount > buf.length) {
             if (writer != null) {
                 if (len == 0) {
+                    /** 如果字段为null， 输出空白字符('':)作为key */
                     write('\'');
                     write('\'');
                     write(':');
@@ -2353,25 +2509,29 @@ public final class SerializeWriter extends Writer {
                     }
                 }
 
+                /** 如果有特殊字符，给字段key添加单引号 */
                 if (hasSpecial) {
                     write('\'');
                 }
                 for (int i = 0; i < len; ++i) {
                     char ch = text.charAt(i);
                     if (ch < specicalFlags_singleQuotes.length && specicalFlags_singleQuotes[ch] != 0) {
+                        /** 如果输出key中包含特殊字符，添加转译字符并将特殊字符替换成普通字符 */
                         write('\\');
                         write(replaceChars[(int) ch]);
                     } else {
                         write(ch);
                     }
                 }
+
+                /** 如果有特殊字符，给字段key添加单引号 */
                 if (hasSpecial) {
                     write('\'');
                 }
                 write(':');
                 return;
             }
-
+            /** 输出器writer为null触发扩容，扩容到为原有buf容量1.5倍+1, copy原有buf的字符*/
             expandCapacity(newcount);
         }
 
@@ -2389,6 +2549,7 @@ public final class SerializeWriter extends Writer {
         int start = count;
         int end = start + len;
 
+        /** buffer能够容纳字符串，直接拷贝text到buf缓冲数组 */
         text.getChars(0, len, buf, start);
         count = newcount;
 
@@ -2404,7 +2565,9 @@ public final class SerializeWriter extends Writer {
                     }
                     count = newcount;
 
+                    /** 将字符后移两位，插入字符'\ 并替换特殊字符为普通字符 */
                     System.arraycopy(buf, i + 1, buf, i + 3, end - i - 1);
+                    /** 将字符后移一位 */
                     System.arraycopy(buf, 0, buf, 1, i);
                     buf[start] = '\'';
                     buf[++i] = '\\';
@@ -2420,6 +2583,7 @@ public final class SerializeWriter extends Writer {
                     }
                     count = newcount;
 
+                    /** 包含特殊字符，将字符后移一位，插入转译字符\ 并替换特殊字符为普通字符 */
                     System.arraycopy(buf, i + 1, buf, i + 2, end - i);
                     buf[i] = '\\';
                     buf[++i] = replaceChars[(int) ch];

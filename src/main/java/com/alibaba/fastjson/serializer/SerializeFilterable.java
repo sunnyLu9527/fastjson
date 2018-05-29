@@ -9,13 +9,21 @@ import com.alibaba.fastjson.JSON;
 
 public abstract class SerializeFilterable {
 
+    //序列化前添加内容 适用类型 javabean
     protected List<BeforeFilter>       beforeFilters       = null;
+    //序列化后添加内容 适用类型 javabean
     protected List<AfterFilter>        afterFilters        = null;
+    //适用于拦截key&value是否输出 适用类型 map javabean
     protected List<PropertyFilter>     propertyFilters     = null;
+    //适用于value的转换 适用类型 map javabean
     protected List<ValueFilter>        valueFilters        = null;
+    //适用于key的别名转换 适用类型 map javabean
     protected List<NameFilter>         nameFilters         = null;
+    //适用于拦截key是否输出 适用类型 map javabean
     protected List<PropertyPreFilter>  propertyPreFilters  = null;
+    //适用与序列化的自定义订制 适用类型 javabean https://github.com/alibaba/fastjson/wiki/LabelFilter
     protected List<LabelFilter>        labelFilters        = null;
+    //适用于value的转换 适用类型 map javabean https://github.com/alibaba/fastjson/wiki/ContextValueFilter
     protected List<ContextValueFilter> contextValueFilters = null;
 
     protected boolean                  writeDirect         = true;

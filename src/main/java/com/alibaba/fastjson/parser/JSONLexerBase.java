@@ -39,23 +39,31 @@ public abstract class JSONLexerBase implements JSONLexer, Closeable {
         token = ERROR;
     }
 
+    /** 当前token含义 */
     protected int                            token;
+    /** 记录当前扫描字符位置 */
     protected int                            pos;
     protected int                            features;
 
+    /** 当前有效字符 */
     protected char                           ch;
+    /** 流(或者json字符串)中当前的位置，每次读取字符会递增 */
     protected int                            bp;
 
     protected int                            eofPos;
 
-    /**
-     * A character buffer for literals.
-     */
+    /** 字符缓冲区 */
     protected char[]                         sbuf;
+
+    /** 字符缓冲区的索引，指向下一个可写
+     *  字符的位置，也代表字符缓冲区字符数量
+     */
     protected int                            sp;
 
     /**
      * number start position
+     * 可以理解为 找到token时 token的首字符位置
+     * 和bp不一样，这个不会递增，会在开始token前记录一次
      */
     protected int                            np;
 
@@ -98,38 +106,46 @@ public abstract class JSONLexerBase implements JSONLexer, Closeable {
     }
 
     public final void nextToken() {
+        /** 将字符buffer pos设置为初始0 */
         sp = 0;
 
         for (;;) {
+            /** pos记录为流的当前位置 */
             pos = bp;
 
             if (ch == '/') {
+                /** 如果是注释// 或者 \/* *\/ 注释，跳过注释 */
                 skipComment();
                 continue;
             }
 
             if (ch == '"') {
+                /** 读取引号内的字符串 */
                 scanString();
                 return;
             }
 
             if (ch == ',') {
+                /** 跳过当前，读取下一个字符 */
                 next();
                 token = COMMA;
                 return;
             }
 
             if (ch >= '0' && ch <= '9') {
+                /** 读取整数 */
                 scanNumber();
                 return;
             }
 
             if (ch == '-') {
+                /** 读取负数 */
                 scanNumber();
                 return;
             }
 
             switch (ch) {
+                /** 读取单引号后面的字符串，和scanString逻辑一致 */
                 case '\'':
                     if (!isEnabled(Feature.AllowSingleQuotes)) {
                         throw new JSONException("Feature.AllowSingleQuotes is false");
@@ -145,21 +161,26 @@ public abstract class JSONLexerBase implements JSONLexer, Closeable {
                     next();
                     break;
                 case 't': // true
+                    /** 读取字符true */
                     scanTrue();
                     return;
                 case 'f': // false
+                    /** 读取字符false */
                     scanFalse();
                     return;
                 case 'n': // new,null
+                    /** 读取为new或者null的token */
                     scanNullOrNew();
                     return;
                 case 'T':
                 case 'N': // NULL
                 case 'S':
                 case 'u': // undefined
+                    /** 读取标识符，已经自动预读了下一个字符 */
                     scanIdent();
                     return;
                 case '(':
+                    /** 读取下一个字符 */
                     next();
                     token = LPAREN;
                     return;
@@ -211,6 +232,7 @@ public abstract class JSONLexerBase implements JSONLexer, Closeable {
                         token = EOF;
                         pos = bp = eofPos;
                     } else {
+                        /** 忽略控制字符或者删除字符 */
                         if (ch <= 31 || ch == 127) {
                             next();
                             break;
