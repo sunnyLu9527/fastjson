@@ -154,7 +154,7 @@ public class ASMUtils {
         }
 
         try {
-            ClassReader reader = new ClassReader(is);
+            ClassReader reader = new ClassReader(is, false);
             TypeCollector visitor = new TypeCollector(name, types);
             reader.accept(visitor);
             String[] parameterNames = visitor.getParameterNamesForMethod();

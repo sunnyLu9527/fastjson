@@ -148,6 +148,10 @@ public class JSONSerializer extends SerializeFilterable {
             return false;
         }
 
+        if (value == Collections.emptyMap()) {
+            return false;
+        }
+
         Object fieldName = refContext.fieldName;
 
         return fieldName == null || fieldName instanceof Integer || fieldName instanceof String;
@@ -318,9 +322,19 @@ public class JSONSerializer extends SerializeFilterable {
 
     public final void writeWithFormat(Object object, String format) {
         if (object instanceof Date) {
+            if ("unixtime".equals(format)) {
+                long seconds = ((Date) object).getTime() / 1000L;
+                out.writeInt((int) seconds);
+                return;
+            }
             DateFormat dateFormat = this.getDateFormat();
             if (dateFormat == null) {
-                dateFormat = new SimpleDateFormat(format, locale);
+                try {
+                    dateFormat = new SimpleDateFormat(format, locale);
+                } catch (IllegalArgumentException e) {
+                    String format2 = format.replaceAll("T", "'T'");
+                    dateFormat = new SimpleDateFormat(format2, locale);
+                }
                 dateFormat.setTimeZone(timeZone);
             }
             String text = dateFormat.format((Date) object);

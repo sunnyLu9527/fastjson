@@ -104,13 +104,13 @@ public class ObjectArrayCodec implements ObjectSerializer, ObjectDeserializer {
 
                         /** 如果当前序列化元素和前一次class类型相同，避免再一次class类型查找序列化实例 */
                         if (clazz == preClazz) {
-                            preWriter.write(serializer, item, null, null, 0);
+                            preWriter.write(serializer, item, i, null, 0);
                         } else {
                             preClazz = clazz;
                             /** 查找数组元素class类型的序列化器 序列化item */
                             preWriter = serializer.getObjectWriter(clazz);
 
-                            preWriter.write(serializer, item, null, null, 0);
+                            preWriter.write(serializer, item, i, null, 0);
                         }
                     }
                     out.append(',');

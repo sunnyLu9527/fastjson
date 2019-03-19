@@ -20,7 +20,16 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Type;
 import java.lang.reflect.WildcardType;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONException;
@@ -82,8 +91,39 @@ public class JavaBeanSerializer extends SerializeFilterable implements ObjectSer
             getters = sortedGetters;
         } else {
             getters = new FieldSerializer[beanInfo.fields.length];
+            boolean hashNotMatch = false;
             for (int i = 0; i < getters.length; ++i) {
-                getters[i] = getFieldSerializer(beanInfo.fields[i].name);
+                FieldSerializer fieldSerializer = getFieldSerializer(beanInfo.fields[i].name);
+                if (fieldSerializer == null) {
+                    hashNotMatch = true;
+                    break;
+                }
+                getters[i] = fieldSerializer;
+            }
+            if (hashNotMatch) {
+                System.arraycopy(sortedGetters, 0, getters, 0, sortedGetters.length);
+            }
+        }
+
+        if (beanInfo.jsonType != null) {
+            for (Class<? extends SerializeFilter> filterClass : beanInfo.jsonType.serialzeFilters()) {
+                try {
+                    SerializeFilter filter = filterClass.getConstructor().newInstance();
+                    this.addFilter(filter);
+                } catch (Exception e) {
+                    // skip
+                }
+            }
+        }
+
+        if (beanInfo.jsonType != null) {
+            for (Class<? extends SerializeFilter> filterClass : beanInfo.jsonType.serialzeFilters()) {
+                try {
+                    SerializeFilter filter = filterClass.getConstructor().newInstance();
+                    this.addFilter(filter);
+                } catch (Exception e) {
+                    // skip
+                }
             }
         }
     }
@@ -163,6 +203,7 @@ public class JavaBeanSerializer extends SerializeFilterable implements ObjectSer
 
         final boolean writeAsArray = isWriteAsArray(serializer, features);
 
+        FieldSerializer errorFieldSerializer = null;
         try {
             final char startSeperator = writeAsArray ? '[' : '{';
             final char endSeperator = writeAsArray ? ']' : '}';
@@ -199,6 +240,7 @@ public class JavaBeanSerializer extends SerializeFilterable implements ObjectSer
 
             char seperator = commaFlag ? ',' : '\0';
 
+            final boolean writeClassName = out.isEnabled(SerializerFeature.WriteClassName);
             final boolean directWritePrefix = out.quoteFieldNames && !out.useSingleQuotes;
             /** 触发序列化BeforeFilter拦截器 */
             char newSeperator = this.writeBefore(serializer, object, seperator);
@@ -257,6 +299,7 @@ public class JavaBeanSerializer extends SerializeFilterable implements ObjectSer
                     try {
                         propertyValue = fieldSerializer.getPropertyValueDirect(object);
                     } catch (InvocationTargetException ex) {
+                        errorFieldSerializer = fieldSerializer;
                         if (out.isEnabled(SerializerFeature.IgnoreErrorGetter)) {
                             propertyValue = null;
                         } else {
@@ -393,7 +436,7 @@ public class JavaBeanSerializer extends SerializeFilterable implements ObjectSer
                 } else {
                     if (!writeAsArray) {
                         /** 输出属性字段名称 */
-                        if (!fieldInfo.unwrapped) {
+                        if (writeClassName || !fieldInfo.unwrapped) {
                             if (directWritePrefix) {
                                 out.write(fieldInfo.name_chars, 0, fieldInfo.name_chars.length);
                             } else {
@@ -482,12 +525,27 @@ public class JavaBeanSerializer extends SerializeFilterable implements ObjectSer
             }
             if (fieldName != null) {
                 errorMessage += ", fieldName : " + fieldName;
+            } else if (errorFieldSerializer != null && errorFieldSerializer.fieldInfo != null) {
+                FieldInfo fieldInfo = errorFieldSerializer.fieldInfo;
+                if (fieldInfo.method != null) {
+                    errorMessage += ", method : " + fieldInfo.method.getName();
+                } else {
+                    errorMessage += ", fieldName : " + errorFieldSerializer.fieldInfo.name;
+                }
             }
             if (e.getMessage() != null) {
                 errorMessage += (", " + e.getMessage());
             }
 
-            throw new JSONException(errorMessage, e);
+            Throwable cause = null;
+            if (e instanceof InvocationTargetException) {
+                cause = e.getCause();
+            }
+            if (cause == null) {
+                cause = e;
+            }
+
+            throw new JSONException(errorMessage, cause);
         } finally {
             serializer.context = parent;
         }
@@ -702,6 +760,25 @@ public class JavaBeanSerializer extends SerializeFilterable implements ObjectSer
             }
         }
         return size;
+    }
+
+    /**
+     * Get field names of not null fields. Keep the same logic as getSize.
+     * 
+     * @param object the object to be checked
+     * @return field name set
+     * @throws Exception
+     * @see #getSize(Object)
+     */
+    public Set<String> getFieldNames(Object object) throws Exception {
+        Set<String> fieldNames = new HashSet<String>();
+        for (FieldSerializer getter : sortedGetters) {
+            Object value = getter.getPropertyValueDirect(object);
+            if (value != null) {
+                fieldNames.add(getter.fieldInfo.name);
+            }
+        }
+        return fieldNames;
     }
 
     public Map<String, Object> getFieldValuesMap(Object object) throws Exception {

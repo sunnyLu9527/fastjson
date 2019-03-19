@@ -36,7 +36,6 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.net.*;
 import java.nio.charset.Charset;
-import java.sql.Clob;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.atomic.*;
@@ -58,6 +57,8 @@ public class SerializeConfig {
     private static boolean                                guavaError      = false;
     private static boolean                                jsonnullError   = false;
 
+    private static boolean                                jodaError       = false;
+
     private boolean                                       asm             = !ASMUtils.IS_ANDROID;
     private ASMSerializerFactory                          asmFactory;
     protected String                                      typeKey         = JSON.DEFAULT_TYPE_KEY;
@@ -66,6 +67,12 @@ public class SerializeConfig {
     private final IdentityHashMap<Type, ObjectSerializer> serializers;
 
     private final boolean                                 fieldBased;
+
+    private long[]                                        denyClasses =
+            {
+                    4165360493669296979L,
+                    4446674157046724083L
+            };
     
 	public String getTypeKey() {
 		return typeKey;
@@ -93,6 +100,11 @@ public class SerializeConfig {
     }
 
     public final ObjectSerializer createJavaBeanSerializer(Class<?> clazz) {
+        String className = clazz.getName();
+        long hashCode64 = TypeUtils.fnv1a_64(className);
+	    if (Arrays.binarySearch(denyClasses, hashCode64) >= 0) {
+	        throw new JSONException("not support class : " + className);
+        }
         /** 封装序列化clazz Bean，包含字段类型等等 */
 	    SerializeBeanInfo beanInfo = TypeUtils.buildBeanInfo(clazz, null, propertyNamingStrategy, fieldBased);
 	    if (beanInfo.fields.length == 0 && Iterable.class.isAssignableFrom(clazz)) {
@@ -121,20 +133,27 @@ public class SerializeConfig {
                     // skip
                 }
             }
-
-            /** 注解显示指定不使用asm */
             if (jsonType.asm() == false) {
                 asm = false;
             }
+	        if (asm) {
+                /** 注解显示开启WriteNonStringValueAsString、WriteEnumUsingToString
+                 * 和NotWriteDefaultValue不使用asm */
+                for (SerializerFeature feature : jsonType.serialzeFeatures()) {
+                    if (SerializerFeature.WriteNonStringValueAsString == feature //
+                            || SerializerFeature.WriteEnumUsingToString == feature //
+                            || SerializerFeature.NotWriteDefaultValue == feature
+                            || SerializerFeature.BrowserCompatible == feature) {
+                        asm = false;
+                        break;
+                    }
+                }
+            }
 
-            /** 注解显示开启WriteNonStringValueAsString、WriteEnumUsingToString
-             * 和NotWriteDefaultValue不使用asm */
-            for (SerializerFeature feature : jsonType.serialzeFeatures()) {
-                if (SerializerFeature.WriteNonStringValueAsString == feature //
-                        || SerializerFeature.WriteEnumUsingToString == feature //
-                        || SerializerFeature.NotWriteDefaultValue == feature) {
+            if (asm) {
+                final Class<? extends SerializeFilter>[] filterClasses = jsonType.serialzeFilters();
+                if (filterClasses.length != 0) {
                     asm = false;
-                    break;
                 }
             }
         }
@@ -145,11 +164,78 @@ public class SerializeConfig {
             return new JavaBeanSerializer(beanInfo);
         }
 
-        // ... 省略asm判断检查
+        if (asm && asmFactory.classLoader.isExternalClass(clazz)
+                || clazz == Serializable.class || clazz == Object.class) {
+            asm = false;
+        }
+
+        if (asm && !ASMUtils.checkName(clazz.getSimpleName())) {
+            asm = false;
+        }
+
+        if (asm && beanInfo.beanType.isInterface()) {
+            asm = false;
+        }
+
+        if (asm) {
+            for(FieldInfo fieldInfo : beanInfo.fields){
+                Field field = fieldInfo.field;
+                if (field != null && !field.getType().equals(fieldInfo.fieldClass)) {
+                    asm = false;
+                    break;
+                }
+
+                Method method = fieldInfo.method;
+                if (method != null && !method.getReturnType().equals(fieldInfo.fieldClass)) {
+                    asm = false;
+                    break;
+                }
+
+                JSONField annotation = fieldInfo.getAnnotation();
+
+                if (annotation == null) {
+                    continue;
+                }
+
+                String format = annotation.format();
+                if (format.length() != 0) {
+                    if (fieldInfo.fieldClass == String.class && "trim".equals(format)) {
+
+                    } else {
+                        asm = false;
+                        break;
+                    }
+                }
+
+                if ((!ASMUtils.checkName(annotation.name())) //
+                        || annotation.jsonDirect()
+                        || annotation.serializeUsing() != Void.class
+                        || annotation.unwrapped()
+                        ) {
+                    asm = false;
+                    break;
+                }
+
+                for (SerializerFeature feature : annotation.serialzeFeatures()) {
+                    if (SerializerFeature.WriteNonStringValueAsString == feature //
+                            || SerializerFeature.WriteEnumUsingToString == feature //
+                            || SerializerFeature.NotWriteDefaultValue == feature
+                            || SerializerFeature.BrowserCompatible == feature
+                            || SerializerFeature.WriteClassName == feature) {
+                        asm = false;
+                        break;
+                    }
+                }
+
+                if (TypeUtils.isAnnotationPresentOneToMany(method) || TypeUtils.isAnnotationPresentManyToMany(method)) {
+                    asm = false;
+                    break;
+                }
+            }
+        }
 
         if (asm) {
             try {
-                /** 使用asm字节码库序列化，后面单独列一个章节分析asm源码 */
                 ObjectSerializer asmSerializer = createASMSerializer(beanInfo);
                 if (asmSerializer != null) {
                     return asmSerializer;
@@ -160,9 +246,13 @@ public class SerializeConfig {
                 // skip
             } catch (ClassCastException e) {
                 // skip
+            } catch (OutOfMemoryError e) {
+                if (e.getMessage().indexOf("Metaspace") != -1) {
+                    throw e;
+                }
+                // skip
             } catch (Throwable e) {
-                throw new JSONException("create asm serializer error, class "
-                        + clazz, e);
+                throw new JSONException("create asm serializer error, verson " + JSON.VERSION + ", class " + clazz, e);
             }
         }
 
@@ -468,7 +558,7 @@ public class SerializeConfig {
                     || XMLGregorianCalendar.class.isAssignableFrom(clazz)) {
                 /** 如果class继承类Calendar或者XMLGregorianCalendar，使用CalendarCodec序列化 */
                 put(clazz, writer = CalendarCodec.instance);
-            } else if (Clob.class.isAssignableFrom(clazz)) {
+            } else if (TypeUtils.isClob(clazz)) {
                 /** 如果class实现Clob接口，使用ClobSeriliazer序列化 */
                 put(clazz, writer = ClobSeriliazer.instance);
             } else if (TypeUtils.isPath(clazz)) {
@@ -476,6 +566,8 @@ public class SerializeConfig {
                 put(clazz, writer = ToStringSerializer.instance);
             } else if (Iterator.class.isAssignableFrom(clazz)) {
                 /** 如果class实现Iterator接口，使用MiscCodec序列化 */
+                put(clazz, writer = MiscCodec.instance);
+            } else if (org.w3c.dom.Node.class.isAssignableFrom(clazz)) {
                 put(clazz, writer = MiscCodec.instance);
             } else {
                 /**
@@ -612,6 +704,7 @@ public class SerializeConfig {
                         String[] names = new String[] {
                                 "com.google.common.collect.HashMultimap",
                                 "com.google.common.collect.LinkedListMultimap",
+                                "com.google.common.collect.LinkedHashMultimap",
                                 "com.google.common.collect.ArrayListMultimap",
                                 "com.google.common.collect.TreeMultimap"
                         };
@@ -640,9 +733,38 @@ public class SerializeConfig {
                     }
                 }
 
+                if ((!jodaError) && className.startsWith("org.joda.")) {
+                    try {
+                        String[] names = new String[] {
+                                "org.joda.time.LocalDate",
+                                "org.joda.time.LocalDateTime",
+                                "org.joda.time.LocalTime",
+                                "org.joda.time.Instant",
+                                "org.joda.time.DateTime",
+                                "org.joda.time.Period",
+                                "org.joda.time.Duration",
+                                "org.joda.time.DateTimeZone",
+                                "org.joda.time.UTCDateTimeZone",
+                                "org.joda.time.tz.CachedDateTimeZone",
+                                "org.joda.time.tz.FixedDateTimeZone",
+                        };
+
+                        for (String name : names) {
+                            if (name.equals(className)) {
+                                put(Class.forName(name), writer = JodaCodec.instance);
+                                return writer;
+                            }
+                        }
+                    } catch (ClassNotFoundException e) {
+                        // skip
+                        jodaError = true;
+                    }
+                }
+
                 Class[] interfaces = clazz.getInterfaces();
                 /** 如果class只实现唯一接口，并且接口包含注解，使用AnnotationSerializer 序列化 */
                 if (interfaces.length == 1 && interfaces[0].isAnnotation()) {
+                    put(clazz, AnnotationSerializer.instance);
                     return AnnotationSerializer.instance;
                 }
 

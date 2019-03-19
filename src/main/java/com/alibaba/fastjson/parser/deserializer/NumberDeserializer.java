@@ -4,7 +4,6 @@ import java.lang.reflect.Type;
 import java.math.BigDecimal;
 
 import com.alibaba.fastjson.JSONException;
-import com.alibaba.fastjson.annotation.JSONType;
 import com.alibaba.fastjson.parser.DefaultJSONParser;
 import com.alibaba.fastjson.parser.JSONLexer;
 import com.alibaba.fastjson.parser.JSONToken;
@@ -55,19 +54,24 @@ public class NumberDeserializer implements ObjectDeserializer {
                 return (T) Double.valueOf(Double.parseDouble(val));
             }
 
-            BigDecimal val = lexer.decimalValue();
-            lexer.nextToken(JSONToken.COMMA);
-
             if (clazz == short.class || clazz == Short.class) {
-                if (val.compareTo(BigDecimal.valueOf(Short.MAX_VALUE)) > 0 || val.compareTo(BigDecimal.valueOf(Short.MIN_VALUE)) < 0) {
-                    throw new JSONException("short overflow : " + val);
-                }
-                return (T) Short.valueOf(val.shortValue());
+                BigDecimal val = lexer.decimalValue();
+                lexer.nextToken(JSONToken.COMMA);
+                short shortValue = TypeUtils.shortValue(val);
+                return (T) Short.valueOf(shortValue);
             }
 
             if (clazz == byte.class || clazz == Byte.class) {
-                return (T) Byte.valueOf(val.byteValue());
+                BigDecimal val = lexer.decimalValue();
+                lexer.nextToken(JSONToken.COMMA);
+                byte byteValue = TypeUtils.byteValue(val);
+                return (T) Byte.valueOf(byteValue);
             }
+
+            BigDecimal val = lexer.decimalValue();
+            lexer.nextToken(JSONToken.COMMA);
+
+
 
             return (T) val;
         }

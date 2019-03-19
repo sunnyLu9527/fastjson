@@ -18,13 +18,14 @@ package com.alibaba.fastjson.serializer;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONException;
 import com.alibaba.fastjson.util.IOUtils;
+import com.alibaba.fastjson.util.RyuDouble;
+import com.alibaba.fastjson.util.RyuFloat;
 
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.Writer;
 import java.math.BigDecimal;
 import java.nio.charset.Charset;
-import java.util.Arrays;
 import java.util.List;
 
 import static com.alibaba.fastjson.util.IOUtils.replaceChars;
@@ -34,9 +35,24 @@ import static com.alibaba.fastjson.util.IOUtils.replaceChars;
  */
 public final class SerializeWriter extends Writer {
     /** 字符类型buffer */
-    private final static ThreadLocal<char[]> bufLocal      = new ThreadLocal<char[]>();
+    private final static ThreadLocal<char[]> bufLocal         = new ThreadLocal<char[]>();
     /** 字节类型buffer */
-    private final static ThreadLocal<byte[]> bytesBufLocal = new ThreadLocal<byte[]>();
+    private final static ThreadLocal<byte[]> bytesBufLocal    = new ThreadLocal<byte[]>();
+    private static       int                 BUFFER_THRESHOLD = 1024 * 128;
+
+    static {
+        try {
+            String prop = IOUtils.getStringProperty("fastjson.serializer_buffer_threshold");
+            if (prop != null && prop.length() > 0) {
+                int serializer_buffer_threshold = Integer.parseInt(prop);
+                if (serializer_buffer_threshold >= 64 && serializer_buffer_threshold <= 1024 * 64) {
+                    BUFFER_THRESHOLD = serializer_buffer_threshold * 1024;
+                }
+            }
+        } catch (Throwable error) {
+            // skip
+        }
+    }
 
     /** 存储序列化结果buffer */
     protected char                           buf[];
@@ -319,6 +335,14 @@ public final class SerializeWriter extends Writer {
         }
         char newValue[] = new char[newCapacity];
         System.arraycopy(buf, 0, newValue, 0, count);
+
+        if (buf.length < BUFFER_THRESHOLD) {
+            char[] charsLocal = bufLocal.get();
+            if (charsLocal == null || charsLocal.length < buf.length) {
+                bufLocal.set(buf);
+            }
+        }
+
         buf = newValue;
     }
     
@@ -514,7 +538,7 @@ public final class SerializeWriter extends Writer {
         if (writer != null && count > 0) {
             flush();
         }
-        if (buf.length <= 1024 * 128) {
+        if (buf.length <= BUFFER_THRESHOLD) {
             bufLocal.set(buf);
         }
 
@@ -707,43 +731,63 @@ public final class SerializeWriter extends Writer {
     }
 
     public void writeFloat(float value, boolean checkWriteClassName) {
-        /** 如果value不合法或者是无穷数，调用writeNull */
-        if (Float.isNaN(value) // 
-                || Float.isInfinite(value)) {
+            /** 如果value不合法或者是无穷数，调用writeNull */
+        if (value != value || value == Float.POSITIVE_INFINITY || value == Float.NEGATIVE_INFINITY) {
             writeNull();
         } else {
-            /** 将高精度float转换为字符串 */
-            String floatText= Float.toString(value);
-            /** 启动WriteNullNumberAsZero特性，会将结尾.0去除 */
-            if (isEnabled(SerializerFeature.WriteNullNumberAsZero) && floatText.endsWith(".0")) {
-                floatText = floatText.substring(0, floatText.length() - 2);
+            int newcount = count + 15;
+            if (newcount > buf.length) {
+                if (writer == null) {
+                    expandCapacity(newcount);
+                } else {
+                    String str = RyuFloat.toString(value);
+                    write(str, 0, str.length());
+
+                    if (checkWriteClassName && isEnabled(SerializerFeature.WriteClassName)) {
+                        write('F');
+                    }
+                    return;
+                }
             }
-            write(floatText);
-            /** 如果开启序列化WriteClassName特性，输出float类型 */
+
+            int len = RyuFloat.toString(value, buf, count);
+            count += len;
             if (checkWriteClassName && isEnabled(SerializerFeature.WriteClassName)) {
                 write('F');
             }
         }
     }
 
-    public void writeDouble(double doubleValue, boolean checkWriteClassName) {
+    public void writeDouble(double value, boolean checkWriteClassName) {
         /** 如果doubleValue不合法或者是无穷数，调用writeNull */
-        if (Double.isNaN(doubleValue) //
-                || Double.isInfinite(doubleValue)) {
+        if (Double.isNaN(value)
+                || Double.isInfinite(value)) {
             writeNull();
-        } else {
-            /** 将高精度double转换为字符串 */
-            String doubleText = Double.toString(doubleValue);
-            /** 启动WriteNullNumberAsZero特性，会将结尾.0去除 */
-            if (isEnabled(SerializerFeature.WriteNullNumberAsZero) && doubleText.endsWith(".0")) {
-                doubleText = doubleText.substring(0, doubleText.length() - 2);
+            return;
+        }
+
+        int newcount = count + 24;
+        if (newcount > buf.length) {
+            if (writer == null) {
+                expandCapacity(newcount);
+            } else {
+                /** 将高精度double转换为字符串 */
+                String str = RyuDouble.toString(value);
+                /** 调用字符串输出方法 */
+                write(str, 0, str.length());
+                /** 如果开启序列化WriteClassName特性，输出Double类型 */
+                if (checkWriteClassName && isEnabled(SerializerFeature.WriteClassName)) {
+                    write('D');
+                }
+                return;
             }
-            /** 调用字符串输出方法 */
-            write(doubleText);
-            /** 如果开启序列化WriteClassName特性，输出Double类型 */
-            if (checkWriteClassName && isEnabled(SerializerFeature.WriteClassName)) {
-                write('D');
-            }
+        }
+
+        int len = RyuDouble.toString(value, buf, count);
+        count += len;
+
+        if (checkWriteClassName && isEnabled(SerializerFeature.WriteClassName)) {
+            write('D');
         }
     }
 
@@ -773,6 +817,14 @@ public final class SerializeWriter extends Writer {
             /** 输出枚举所在的索引号 */
             writeInt(value.ordinal());
         }
+    }
+
+    /**
+     * @deprecated
+     */
+    public void writeLongAndChar(long i, char c) throws IOException {
+        writeLong(i);
+        write(c);
     }
 
     public void writeLong(long i) {
@@ -2233,7 +2285,11 @@ public final class SerializeWriter extends Writer {
         if (value == null) {
             writeNull();
         } else {
-            write(value.toString());
+            int scale = value.scale();
+            write(isEnabled(SerializerFeature.WriteBigDecimalAsPlain) && scale >= -100 && scale < 100
+                    ? value.toPlainString()
+                    : value.toString()
+            );
         }
     }
 

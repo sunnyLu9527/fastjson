@@ -221,7 +221,7 @@ public class MapSerializer extends SerializeFilterable implements ObjectSerializ
 
                 if (value == null) {
                     /** 如果开启map为Null，不输出 */
-                    if (!out.isEnabled(SerializerFeature.WRITE_MAP_NULL_FEATURES)) {
+                    if (!out.isEnabled(SerializerFeature.WriteMapNullValue)) {
                         continue;
                     }
                 }

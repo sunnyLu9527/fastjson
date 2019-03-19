@@ -15,18 +15,10 @@
  */
 package com.alibaba.fastjson.parser;
 
-import java.io.Closeable;
-import java.io.File;
-import java.io.Serializable;
+import java.io.*;
 import java.lang.ref.SoftReference;
 import java.lang.ref.WeakReference;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.Modifier;
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Type;
-import java.lang.reflect.TypeVariable;
-import java.lang.reflect.WildcardType;
+import java.lang.reflect.*;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.net.Inet4Address;
@@ -52,13 +44,14 @@ import java.util.regex.Pattern;
 import com.alibaba.fastjson.*;
 import com.alibaba.fastjson.annotation.JSONField;
 import com.alibaba.fastjson.annotation.JSONType;
+import com.alibaba.fastjson.asm.ClassReader;
+import com.alibaba.fastjson.asm.TypeCollector;
 import com.alibaba.fastjson.parser.deserializer.*;
 import com.alibaba.fastjson.serializer.*;
 import com.alibaba.fastjson.util.*;
 import com.alibaba.fastjson.util.IdentityHashMap;
 import com.alibaba.fastjson.util.ServiceLoader;
 
-import javax.sql.DataSource;
 import javax.xml.datatype.XMLGregorianCalendar;
 
 /**
@@ -66,13 +59,13 @@ import javax.xml.datatype.XMLGregorianCalendar;
  */
 public class ParserConfig {
 
-    public final static String DENY_PROPERTY             = "fastjson.parser.deny";
-    public final static String AUTOTYPE_ACCEPT           = "fastjson.parser.autoTypeAccept";
-    public final static String AUTOTYPE_SUPPORT_PROPERTY = "fastjson.parser.autoTypeSupport";
-    
-    public static final String[] DENYS;
+    public static final String    DENY_PROPERTY             = "fastjson.parser.deny";
+    public static final String    AUTOTYPE_ACCEPT           = "fastjson.parser.autoTypeAccept";
+    public static final String    AUTOTYPE_SUPPORT_PROPERTY = "fastjson.parser.autoTypeSupport";
+
+    public static  final String[] DENYS;
     private static final String[] AUTO_TYPE_ACCEPT_LIST;
-    public static final boolean AUTO_SUPPORT;
+    public static  final boolean  AUTO_SUPPORT;
 
     static  {
         {
@@ -96,10 +89,10 @@ public class ParserConfig {
     public static ParserConfig getGlobalInstance() {
         return global;
     }
-
     public static ParserConfig                              global                = new ParserConfig();
 
     private final IdentityHashMap<Type, ObjectDeserializer> deserializers         = new IdentityHashMap<Type, ObjectDeserializer>();
+    private final ConcurrentMap<String,Class<?>>            typeMapping           = new ConcurrentHashMap<String,Class<?>>(16, 0.75f, 1);
 
     private boolean                                         asmEnable             = !ASMUtils.IS_ANDROID;
 
@@ -113,6 +106,8 @@ public class ParserConfig {
 
     private static boolean                                  awtError              = false;
     private static boolean                                  jdk8Error             = false;
+    private static boolean                                  jodaError             = false;
+    private static boolean                                  guavaError            = false;
 
     private boolean                                         autoTypeSupport       = AUTO_SUPPORT;
     private long[]                                          denyHashCodes;
@@ -120,6 +115,7 @@ public class ParserConfig {
 
 
     public final boolean                                    fieldBased;
+    private boolean                                         jacksonCompatible     = false;
 
     public boolean                                          compatibleWithJavaBean = TypeUtils.compatibleWithJavaBean;
 
@@ -150,11 +146,13 @@ public class ParserConfig {
                 313864100207897507L,
                 1073634739308289776L,
                 1203232727967308606L,
+                1459860845934817624L,
                 1502845958873959152L,
                 3547627781654598988L,
                 3730752432285826863L,
                 3794316665763266033L,
                 4147696707147271408L,
+                4904007817188630457L,
                 5347909877633654828L,
                 5450448828334921485L,
                 5688200883751798389L,
@@ -165,13 +163,16 @@ public class ParserConfig {
                 7179336928365889465L,
                 7442624256860549330L,
                 8389032537095247355L,
+                8409640769019589119L,
                 8838294710098435315L
         };
 
-        long[] hashCodes = new long[AUTO_TYPE_ACCEPT_LIST.length];
+        long[] hashCodes = new long[AUTO_TYPE_ACCEPT_LIST.length + 1];
         for (int i = 0; i < AUTO_TYPE_ACCEPT_LIST.length; i++) {
             hashCodes[i] = TypeUtils.fnv1a_64(AUTO_TYPE_ACCEPT_LIST[i]);
         }
+        hashCodes[hashCodes.length - 1] = -6293031534589903644L;
+
         Arrays.sort(hashCodes);
         acceptHashCodes = hashCodes;
     }
@@ -283,7 +284,7 @@ public class ParserConfig {
         deserializers.put(TimeZone.class, MiscCodec.instance);
         deserializers.put(Locale.class, MiscCodec.instance);
         deserializers.put(Currency.class, MiscCodec.instance);
-        deserializers.put(InetAddress.class, MiscCodec.instance);
+
         deserializers.put(Inet4Address.class, MiscCodec.instance);
         deserializers.put(Inet6Address.class, MiscCodec.instance);
         deserializers.put(InetSocketAddress.class, MiscCodec.instance);
@@ -370,6 +371,13 @@ public class ParserConfig {
 
     public void setAsmEnable(boolean asmEnable) {
         this.asmEnable = asmEnable;
+    }
+
+    /**
+     * @deprecated
+     */
+    public IdentityHashMap<Type, ObjectDeserializer> getDerializers() {
+        return deserializers;
     }
 
     public IdentityHashMap<Type, ObjectDeserializer> getDeserializers() {
@@ -533,6 +541,57 @@ public class ParserConfig {
             }
         }
 
+        if (!jodaError) {
+            try {
+                if (className.startsWith("org.joda.time.")) {
+                    String[] names = new String[] {
+                            "org.joda.time.DateTime",
+                            "org.joda.time.LocalDate",
+                            "org.joda.time.LocalDateTime",
+                            "org.joda.time.LocalTime",
+                            "org.joda.time.Instant",
+                            "org.joda.time.Period",
+                            "org.joda.time.Duration",
+                            "org.joda.time.DateTimeZone",
+                            "org.joda.time.format.DateTimeFormatter"
+                    };
+
+                    for (String name : names) {
+                        if (name.equals(className)) {
+                            deserializers.put(Class.forName(name), derializer = JodaCodec.instance);
+                            return derializer;
+                        }
+                    }
+                }
+            } catch (Throwable e) {
+                // skip
+                jodaError = true;
+            }
+        }
+
+        if ((!guavaError) //
+                && className.startsWith("com.google.common.collect.")) {
+            try {
+                String[] names = new String[] {
+                        "com.google.common.collect.HashMultimap",
+                        "com.google.common.collect.LinkedListMultimap",
+                        "com.google.common.collect.LinkedHashMultimap",
+                        "com.google.common.collect.ArrayListMultimap",
+                        "com.google.common.collect.TreeMultimap"
+                };
+
+                for (String name : names) {
+                    if (name.equals(className)) {
+                        deserializers.put(Class.forName(name), derializer = GuavaCodec.instance);
+                        return derializer;
+                    }
+                }
+            } catch (ClassNotFoundException e) {
+                // skip
+                guavaError = true;
+            }
+        }
+
         if (className.equals("java.nio.file.Path")) {
             deserializers.put(clazz, derializer = MiscCodec.instance);
         }
@@ -563,6 +622,17 @@ public class ParserConfig {
         }
 
         if (clazz.isEnum()) {
+            if (jacksonCompatible) {
+                Method[] methods = clazz.getMethods();
+                for (Method method : methods) {
+                    if (TypeUtils.isJacksonCreator(method)) {
+                        derializer = createJavaBeanDeserializer(clazz, type);
+                        putDeserializer(type, derializer);
+                        return derializer;
+                    }
+                }
+            }
+
             Class<?> deserClass = null;
             JSONType jsonType = clazz.getAnnotation(JSONType.class);
             if (jsonType != null) {
@@ -595,7 +665,9 @@ public class ParserConfig {
             /** 如果class继承Throwable类，使用ThrowableDeserializer反序列化 */
             derializer = new ThrowableDeserializer(this, clazz);
         } else if (PropertyProcessable.class.isAssignableFrom(clazz)) {
-            derializer = new PropertyProcessableDeserializer((Class<PropertyProcessable>)clazz);
+            derializer = new PropertyProcessableDeserializer((Class<PropertyProcessable>) clazz);
+        } else if (clazz == InetAddress.class) {
+            derializer = MiscCodec.instance;
         } else {
             /** 默认使用JavaBeanDeserializer反序列化(没有开启asm情况下) */
             derializer = createJavaBeanDeserializer(clazz, type);
@@ -682,7 +754,13 @@ public class ParserConfig {
             if (clazz.isInterface()) {
                 asmEnable = false;
             }
-            JavaBeanInfo beanInfo = JavaBeanInfo.build(clazz, type, propertyNamingStrategy);
+            JavaBeanInfo beanInfo = JavaBeanInfo.build(clazz
+                    , type
+                    , propertyNamingStrategy
+                    ,false
+                    , TypeUtils.compatibleWithJavaBean
+                    , jacksonCompatible
+            );
 
             if (asmEnable && beanInfo.fields.length > 200) {
                 asmEnable = false;
@@ -739,6 +817,12 @@ public class ParserConfig {
 
         if (asmEnable) {
             if (clazz.isMemberClass() && !Modifier.isStatic(clazz.getModifiers())) {
+                asmEnable = false;
+            }
+        }
+
+        if (asmEnable) {
+            if (TypeUtils.isXmlField(clazz)) {
                 asmEnable = false;
             }
         }
@@ -922,6 +1006,14 @@ public class ParserConfig {
         this.acceptHashCodes = hashCodes;
     }
 
+    public Class<?> checkAutoType(Class type) {
+        if (deserializers.get(type) != null) {
+            return type;
+        }
+
+        return checkAutoType(type.getName(), null, JSON.DEFAULT_PARSER_FEATURE);
+    }
+
     public Class<?> checkAutoType(String typeName, Class<?> expectClass) {
         return checkAutoType(typeName, expectClass, JSON.DEFAULT_PARSER_FEATURE);
     }
@@ -931,8 +1023,26 @@ public class ParserConfig {
             return null;
         }
 
-        if (typeName.length() >= 128 || typeName.length() < 3) {
+        if (typeName.length() >= 192 || typeName.length() < 3) {
             throw new JSONException("autoType is not support. " + typeName);
+        }
+
+        final boolean expectClassFlag;
+        if (expectClass == null) {
+            expectClassFlag = false;
+        } else {
+            if (expectClass == Object.class
+                    || expectClass == Serializable.class
+                    || expectClass == Cloneable.class
+                    || expectClass == Closeable.class
+                    || expectClass == EventListener.class
+                    || expectClass == Iterable.class
+                    || expectClass == Collection.class
+                    ) {
+                expectClassFlag = false;
+            } else {
+                expectClassFlag = true;
+            }
         }
 
         String className = typeName.replace('$', '.');
@@ -957,13 +1067,13 @@ public class ParserConfig {
                 ^ className.charAt(2))
                 * PRIME;
 
-        if (autoTypeSupport || expectClass != null) {
+        if (autoTypeSupport || expectClassFlag) {
             long hash = h3;
             for (int i = 3; i < className.length(); ++i) {
                 hash ^= className.charAt(i);
                 hash *= PRIME;
                 if (Arrays.binarySearch(acceptHashCodes, hash) >= 0) {
-                    clazz = TypeUtils.loadClass(typeName, defaultClassLoader, false);
+                    clazz = TypeUtils.loadClass(typeName, defaultClassLoader, true);
                     if (clazz != null) {
                         return clazz;
                     }
@@ -980,6 +1090,10 @@ public class ParserConfig {
 
         if (clazz == null) {
             clazz = deserializers.findClass(typeName);
+        }
+
+        if (clazz == null) {
+            clazz = typeMapping.get(typeName);
         }
 
         if (clazz != null) {
@@ -1003,9 +1117,10 @@ public class ParserConfig {
                     throw new JSONException("autoType is not support. " + typeName);
                 }
 
+                // white list
                 if (Arrays.binarySearch(acceptHashCodes, hash) >= 0) {
                     if (clazz == null) {
-                        clazz = TypeUtils.loadClass(typeName, defaultClassLoader, false);
+                        clazz = TypeUtils.loadClass(typeName, defaultClassLoader, true);
                     }
 
                     if (expectClass != null && expectClass.isAssignableFrom(clazz)) {
@@ -1017,23 +1132,53 @@ public class ParserConfig {
             }
         }
 
-        if (clazz == null) {
-            clazz = TypeUtils.loadClass(typeName, defaultClassLoader, false);
+        boolean jsonType = false;
+        InputStream is = null;
+        try {
+            String resource = typeName.replace('.', '/') + ".class";
+            if (defaultClassLoader != null) {
+                is = defaultClassLoader.getResourceAsStream(resource);
+            } else {
+                is = ParserConfig.class.getClassLoader().getResourceAsStream(resource);
+            }
+            if (is != null) {
+                ClassReader classReader = new ClassReader(is, true);
+                TypeCollector visitor = new TypeCollector("<clinit>", new Class[0]);
+                classReader.accept(visitor);
+                jsonType = visitor.hasJsonType();
+            }
+        } catch (Exception e) {
+            // skip
+        } finally {
+            IOUtils.close(is);
+        }
+
+        final int mask = Feature.SupportAutoType.mask;
+        boolean autoTypeSupport = this.autoTypeSupport
+                || (features & mask) != 0
+                || (JSON.DEFAULT_PARSER_FEATURE & mask) != 0;
+
+        if (clazz == null && (autoTypeSupport || jsonType || expectClassFlag)) {
+            boolean cacheClass = autoTypeSupport || jsonType;
+            clazz = TypeUtils.loadClass(typeName, defaultClassLoader, cacheClass);
         }
 
         if (clazz != null) {
-            if (TypeUtils.getAnnotation(clazz,JSONType.class) != null) {
+            if (jsonType) {
+                TypeUtils.addMapping(typeName, clazz);
                 return clazz;
             }
 
             if (ClassLoader.class.isAssignableFrom(clazz) // classloader is danger
-                    || DataSource.class.isAssignableFrom(clazz) // dataSource can load jdbc driver
+                    || javax.sql.DataSource.class.isAssignableFrom(clazz) // dataSource can load jdbc driver
+                    || javax.sql.RowSet.class.isAssignableFrom(clazz) //
                     ) {
                 throw new JSONException("autoType is not support. " + typeName);
             }
 
             if (expectClass != null) {
                 if (expectClass.isAssignableFrom(clazz)) {
+                    TypeUtils.addMapping(typeName, clazz);
                     return clazz;
                 } else {
                     throw new JSONException("type not match. " + typeName + " -> " + expectClass.getName());
@@ -1046,13 +1191,12 @@ public class ParserConfig {
             }
         }
 
-        final int mask = Feature.SupportAutoType.mask;
-        boolean autoTypeSupport = this.autoTypeSupport
-                || (features & mask) != 0
-                || (JSON.DEFAULT_PARSER_FEATURE & mask) != 0;
-
         if (!autoTypeSupport) {
             throw new JSONException("autoType is not support. " + typeName);
+        }
+
+        if (clazz != null) {
+            TypeUtils.addMapping(typeName, clazz);
         }
 
         return clazz;
@@ -1061,5 +1205,17 @@ public class ParserConfig {
     public void clearDeserializers() {
         this.deserializers.clear();
         this.initDeserializers();
+    }
+
+    public boolean isJacksonCompatible() {
+        return jacksonCompatible;
+    }
+
+    public void setJacksonCompatible(boolean jacksonCompatible) {
+        this.jacksonCompatible = jacksonCompatible;
+    }
+
+    public void register(String typeName, Class type) {
+        typeMapping.putIfAbsent(typeName, type);
     }
 }

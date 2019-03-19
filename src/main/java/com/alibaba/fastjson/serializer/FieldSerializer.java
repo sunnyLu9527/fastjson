@@ -23,6 +23,8 @@ import com.alibaba.fastjson.util.TypeUtils;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.text.SimpleDateFormat;
 import java.util.Collection;
 import java.util.Date;
@@ -58,7 +60,13 @@ public class FieldSerializer implements Comparable<FieldSerializer> {
         this.fieldInfo = fieldInfo;
         this.fieldContext = new BeanContext(beanType, fieldInfo);
 
-        if (beanType != null && (fieldInfo.isEnum || fieldInfo.fieldClass == long.class || fieldInfo.fieldClass == Long.class)) {
+        if (beanType != null
+                && (fieldInfo.isEnum
+                    || fieldInfo.fieldClass == long.class
+                    || fieldInfo.fieldClass == Long.class
+                    || fieldInfo.fieldClass == BigInteger.class
+                    || fieldInfo.fieldClass == BigDecimal.class)
+        ) {
             JSONType jsonType = TypeUtils.getAnnotation(beanType,JSONType.class);
             if (jsonType != null) {
                 for (SerializerFeature feature : jsonType.serialzeFeatures()) {
@@ -69,6 +77,7 @@ public class FieldSerializer implements Comparable<FieldSerializer> {
                     } else if(feature == SerializerFeature.DisableCircularReferenceDetect){
                         disableCircularReferenceDetect = true;
                     } else if(feature == SerializerFeature.BrowserCompatible){
+                        features |= SerializerFeature.BrowserCompatible.mask;
                         browserCompatible = true;
                     }
                 }
@@ -148,7 +157,7 @@ public class FieldSerializer implements Comparable<FieldSerializer> {
         Object propertyValue =  fieldInfo.get(object);
         if (format != null && propertyValue != null) {
             if (fieldInfo.fieldClass == Date.class) {
-                SimpleDateFormat dateFormat = new SimpleDateFormat(format);
+                SimpleDateFormat dateFormat = new SimpleDateFormat(format, JSON.defaultLocale);
                 dateFormat.setTimeZone(JSON.defaultTimeZone);
                 return dateFormat.format(propertyValue);
             }
@@ -168,6 +177,21 @@ public class FieldSerializer implements Comparable<FieldSerializer> {
             /** 获取字段的类型 */
             if (propertyValue == null) {
                 runtimeFieldClass = this.fieldInfo.fieldClass;
+                if (runtimeFieldClass == byte.class) {
+                    runtimeFieldClass = Byte.class;
+                } else if (runtimeFieldClass == short.class) {
+                    runtimeFieldClass = Short.class;
+                } else if (runtimeFieldClass == int.class) {
+                    runtimeFieldClass = Integer.class;
+                } else if (runtimeFieldClass == long.class) {
+                    runtimeFieldClass = Long.class;
+                } else if (runtimeFieldClass == float.class) {
+                    runtimeFieldClass = Float.class;
+                } else if (runtimeFieldClass == double.class) {
+                    runtimeFieldClass = Double.class;
+                } else if (runtimeFieldClass == boolean.class) {
+                    runtimeFieldClass = Boolean.class;
+                }
             } else {
                 runtimeFieldClass = propertyValue.getClass();
             }
@@ -201,8 +225,10 @@ public class FieldSerializer implements Comparable<FieldSerializer> {
 
         final RuntimeSerializerInfo runtimeInfo = this.runtimeInfo;
 
-        final int fieldFeatures = disableCircularReferenceDetect?
-                (fieldInfo.serialzeFeatures|SerializerFeature.DisableCircularReferenceDetect.getMask()):fieldInfo.serialzeFeatures;
+        final int fieldFeatures
+                = (disableCircularReferenceDetect
+                ? (fieldInfo.serialzeFeatures | SerializerFeature.DisableCircularReferenceDetect.mask)
+                : fieldInfo.serialzeFeatures) | features;
 
         if (propertyValue == null) {
             SerializeWriter out  = serializer.out;
