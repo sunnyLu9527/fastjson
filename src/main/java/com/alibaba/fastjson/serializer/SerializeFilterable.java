@@ -6,6 +6,10 @@ import java.util.List;
 
 import com.alibaba.fastjson.JSON;
 
+/**
+ * SerializeConfig添加过滤器最终就是放到这里的
+ * @see SerializeConfig#addFilter(Class, SerializeFilter)
+ */
 public abstract class SerializeFilterable {
 
     //序列化前添加内容 适用类型 javabean

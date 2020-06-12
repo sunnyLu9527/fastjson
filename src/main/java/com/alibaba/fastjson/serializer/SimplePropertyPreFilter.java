@@ -20,9 +20,12 @@ import java.util.Set;
  */
 public class SimplePropertyPreFilter implements PropertyPreFilter {
 
-    private final Class<?>    clazz;//需要执行过滤的Class类型
-    private final Set<String> includes = new HashSet<String>();//这些属性不会被过滤
-    private final Set<String> excludes = new HashSet<String>();//这些属性会被过滤
+    //需要执行过滤的Class类型
+    private final Class<?>    clazz;
+    //这些属性不会被过滤
+    private final Set<String> includes = new HashSet<String>();
+    //这些属性会被过滤，不过本类对外并没有开放对该属性的设置，事实上可以设置includes就足够了
+    private final Set<String> excludes = new HashSet<String>();
     private int               maxLevel = 0;
 
     public SimplePropertyPreFilter(String... properties){
@@ -69,11 +72,11 @@ public class SimplePropertyPreFilter implements PropertyPreFilter {
         if (source == null) {
             return true;
         }
-        //不是须要过滤的Class类型则不须要拦截
+        //如果指定了须要过滤的类型clazz，则当前source如果不是clazz类型，直接返回true，意味着当前source下的所有属性都会被序列化
         if (clazz != null && !clazz.isInstance(source)) {
             return true;
         }
-
+        //当前属性在须要排除的set中，则返回false，代表当前属性不会被序列化
         if (this.excludes.contains(name)) {
             return false;
         }
@@ -89,7 +92,7 @@ public class SimplePropertyPreFilter implements PropertyPreFilter {
                 context = context.parent;
             }
         }
-
+        //当前属性在includes的set中，则返回true，代表当前属性须要被序列化，否则返回false
         if (includes.size() == 0 || includes.contains(name)) {
             return true;
         }

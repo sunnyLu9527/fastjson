@@ -24,5 +24,13 @@ public abstract class BeforeFilter implements SerializeFilter {
         }
     }
 
+    /***
+    * @Param [object]
+    * @description 直接传当前对象，你想怎么改就怎么改
+    * @author luming
+    * @date 2020/6/12 11:34
+    * @return void
+    * @throws
+    */
     public abstract void writeBefore(Object object);
 }

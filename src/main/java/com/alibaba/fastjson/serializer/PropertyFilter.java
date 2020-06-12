@@ -21,6 +21,7 @@ package com.alibaba.fastjson.serializer;
 public interface PropertyFilter extends SerializeFilter {
 
     /**
+     * 官方注释很明显了吧，不须要再解释了
      * @param object the owner of the property
      * @param name the name of the property
      * @param value the value of the property

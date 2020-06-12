@@ -17,5 +17,13 @@ package com.alibaba.fastjson.serializer;
 
 public interface PropertyPreFilter extends SerializeFilter {
 
+    /***
+    * @Param [serializer, object--代表当前正在做序列化的对象, name--代表当前在序列化的属性的名字]
+    * @description
+    * @author luming
+    * @date 2020/6/12 10:37
+    * @return boolean true代表这个属性会被序列化，false代表这个属性不会被序列化
+    * @throws
+    */
     boolean apply(JSONSerializer serializer, Object object, String name);
 }
